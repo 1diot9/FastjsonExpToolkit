@@ -8,9 +8,7 @@ import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "首页" },
-  { href: "/detect", label: "识别" },
-  { href: "/version", label: "版本" },
-  { href: "/expect", label: "期望类" },
+  { href: "/detect", label: "探测" },
   { href: "/deps", label: "依赖" },
   { href: "/poc", label: "PoC" },
   { href: "/waf", label: "WAF" },

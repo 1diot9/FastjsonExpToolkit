@@ -3,11 +3,9 @@ import {
   ArrowRight,
   BookOpen,
   Bomb,
-  Fingerprint,
   PackageSearch,
   ScanSearch,
   Settings,
-  Shapes,
   ShieldOff,
 } from "lucide-react";
 
@@ -31,7 +29,7 @@ export default function Home() {
           FastjsonExpToolkit
         </h1>
         <p className="max-w-xl text-muted-foreground">
-          Fastjson 识别 / 版本 / 期望类 / 依赖探测 / PoC / WAF 绕过工具箱。已打通识别、版本、期望类、依赖、
+          Fastjson 探测 / 依赖 / PoC / WAF 绕过工具箱。识别、版本、期望类已合并为按序探测；另含依赖、
           PoC 与 WAF 变换；UI 基于{" "}
           <a
             className="underline underline-offset-4"
@@ -50,51 +48,17 @@ export default function Home() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ScanSearch className="size-5" />
-              Fastjson 识别
+              Fastjson 探测
             </CardTitle>
             <CardDescription>
-              对接 <code>/api/detect</code>，输出置信度、证据与下一步建议。
+              识别 → 版本 → 期望类按序执行，对接{" "}
+              <code>/api/detect</code>、<code>/api/version</code>、
+              <code>/api/expect</code>。
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/detect" className={cn(buttonVariants())}>
-              打开识别页
-              <ArrowRight className="size-4" data-icon="inline-end" />
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Fingerprint className="size-5" />
-              版本探测
-            </CardTitle>
-            <CardDescription>
-              对接 <code>/api/version</code>，收敛版本区间与 AutoType 状态。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/version" className={cn(buttonVariants())}>
-              打开版本页
-              <ArrowRight className="size-4" data-icon="inline-end" />
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shapes className="size-5" />
-              期望类探测
-            </CardTitle>
-            <CardDescription>
-              对接 <code>/api/expect</code>，判断是否绑定期望类 / 非 Map。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/expect" className={cn(buttonVariants())}>
-              打开期望类页
+              打开探测页
               <ArrowRight className="size-4" data-icon="inline-end" />
             </Link>
           </CardContent>
