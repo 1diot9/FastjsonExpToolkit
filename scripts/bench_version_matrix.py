@@ -34,6 +34,7 @@ def main() -> int:
             "confidence": result.confidence,
             "echo": result.reported_version,
             "autotype": result.autotype_enabled,
+            "safemode": result.safemode_enabled,
             "p83": result.is_1_2_83_hint,
             "offline": result.raw.get("offline_flags"),
             "error_surface": result.raw.get("error_surface"),
@@ -43,7 +44,8 @@ def main() -> int:
         print(
             f"{name:10} range={result.version_range!r:45} "
             f"conf={result.confidence:.2f} echo={result.reported_version!r:8} "
-            f"at={result.autotype_enabled} p83={result.is_1_2_83_hint} "
+            f"at={result.autotype_enabled} sm={result.safemode_enabled} "
+            f"p83={result.is_1_2_83_hint} "
             f"offline={result.raw.get('offline_flags')}"
         )
     print("---JSON---")

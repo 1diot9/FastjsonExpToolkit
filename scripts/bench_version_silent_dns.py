@@ -66,6 +66,7 @@ def run_suite(targets, ceye, include_dns: bool) -> list[dict]:
             "verdict": verdict,
             "confidence": result.confidence,
             "autotype": result.autotype_enabled,
+            "safemode": result.safemode_enabled,
             "echo": result.reported_version,
             "offline": result.raw.get("offline_flags"),
             "dns_hits": result.dns_hits,
