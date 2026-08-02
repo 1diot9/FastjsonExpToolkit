@@ -1,5 +1,6 @@
 .env
 .runtime/
+tmp_lab/
 .venv/
 venv/
 __pycache__/
