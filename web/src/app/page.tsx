@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ScanSearch, Settings } from "lucide-react";
+import { ArrowRight, BookOpen, ScanSearch, Settings } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -72,6 +72,54 @@ export default function Home() {
               打开设置
               <ArrowRight className="size-4" data-icon="inline-end" />
             </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="sm:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="size-5" />
+              API 文档
+            </CardTitle>
+            <CardDescription>
+              基于{" "}
+              <a
+                className="underline underline-offset-4"
+                href="https://github.com/scalar/scalar"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Scalar
+              </a>
+              ，也可切换 Swagger / ReDoc。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <a
+              href="/api/docs"
+              target="_blank"
+              rel="noreferrer"
+              className={cn(buttonVariants())}
+            >
+              Scalar
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </a>
+            <a
+              href="/api/swagger"
+              target="_blank"
+              rel="noreferrer"
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              Swagger UI
+            </a>
+            <a
+              href="/api/redoc"
+              target="_blank"
+              rel="noreferrer"
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              ReDoc
+            </a>
           </CardContent>
         </Card>
       </div>

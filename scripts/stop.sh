@@ -2,12 +2,22 @@
 # Stop FastjsonExpToolkit Web (backend + frontend). Linux/macOS.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUNTIME="$ROOT/.runtime"
 PID_BACKEND="$RUNTIME/backend.pid"
 PID_FRONTEND="$RUNTIME/frontend.pid"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+
+kill_tree() {
+  local pid="$1"
+  local child
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+    kill_tree "$child"
+  done
+  kill "$pid" 2>/dev/null || true
+}
 
 kill_pid_file() {
   local name="$1"
@@ -19,13 +29,17 @@ kill_pid_file() {
   pid="$(cat "$pid_file" 2>/dev/null || true)"
   if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
     echo "[*] stopping $name (pid=$pid)"
-    kill "$pid" 2>/dev/null || true
+    kill_tree "$pid"
     for _ in $(seq 1 20); do
       kill -0 "$pid" 2>/dev/null || break
       sleep 0.1
     done
     if kill -0 "$pid" 2>/dev/null; then
       kill -9 "$pid" 2>/dev/null || true
+      # also force-kill remaining children
+      for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+        kill -9 "$child" 2>/dev/null || true
+      done
     fi
   fi
   rm -f "$pid_file"

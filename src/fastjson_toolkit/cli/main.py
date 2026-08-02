@@ -205,18 +205,30 @@ def probes_cmd(
 def serve_cmd(
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8000, "--port"),
-    reload: bool = typer.Option(False, "--reload"),
+    reload: bool = typer.Option(
+        True,
+        "--reload/--no-reload",
+        help="监听源码变更并自动重启（默认开启）",
+    ),
 ) -> None:
     """启动 Web 后端 API（FastAPI / Uvicorn）。"""
     load_dotenv()
     import uvicorn
+    from pathlib import Path
 
-    uvicorn.run(
-        "fastjson_toolkit.api.app:app",
-        host=host,
-        port=port,
-        reload=reload,
-    )
+    # package root: .../src/fastjson_toolkit/cli/main.py → project/src
+    src_dir = Path(__file__).resolve().parents[2]
+    kwargs: dict = {
+        "app": "fastjson_toolkit.api.app:app",
+        "host": host,
+        "port": port,
+        "reload": reload,
+    }
+    if reload:
+        kwargs["reload_dirs"] = [str(src_dir)]
+        kwargs["reload_includes"] = ["*.py"]
+
+    uvicorn.run(**kwargs)
 
 
 if __name__ == "__main__":

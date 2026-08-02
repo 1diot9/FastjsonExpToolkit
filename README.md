@@ -35,21 +35,28 @@ cd ..
 
 ### 2. 一键启停（不含 Docker 靶场）
 
+默认开启**热更新**：
+
+- 后端：`uvicorn --reload`，监听 `src/`（改 Python 代码自动重启）
+- 前端：`next dev` HMR（改 `web/` 自动刷新）
+
+关闭后端热更新：`scripts\start.ps1 -NoReload`，或环境变量 `BACKEND_RELOAD=0`。
+
 **Windows**
 
 ```bat
-start.bat
-stop.bat
+scripts\start.bat
+scripts\stop.bat
 ```
 
-也可直接运行 `start.ps1` / `stop.ps1`。
+也可：`powershell -File scripts\start.ps1` / `scripts\stop.ps1`。
 
 **Linux / macOS**
 
 ```bash
-chmod +x start.sh stop.sh
-./start.sh
-./stop.sh
+chmod +x scripts/start.sh scripts/stop.sh
+./scripts/start.sh
+./scripts/stop.sh
 ```
 
 启动后：
@@ -60,13 +67,17 @@ chmod +x start.sh stop.sh
 | 识别页 | http://127.0.0.1:3000/detect |
 | 设置页 | http://127.0.0.1:3000/settings |
 | 后端 API | http://127.0.0.1:8000 |
-| API 文档 | http://127.0.0.1:8000/docs |
+| API 文档（Scalar） | http://127.0.0.1:8000/api/docs 或经前端代理 `/api/docs` |
+| Swagger UI | http://127.0.0.1:8000/api/swagger |
+| ReDoc | http://127.0.0.1:8000/api/redoc |
+| OpenAPI JSON | http://127.0.0.1:8000/api/openapi.json |
 
 日志目录：`.runtime/logs/`。
 
 手动启动：
 
 ```bash
+# 默认 --reload；生产可加 --no-reload
 fjtoolkit serve --host 127.0.0.1 --port 8000
 cd web && npm run dev
 ```
@@ -134,7 +145,7 @@ fjtoolkit detect http://127.0.0.1:18080/api/jackson --json --no-dns
 # 列出探针
 fjtoolkit probes --dnslog xxx.hpdth2.ceye.io
 
-# 启动 API
+# 启动 API（默认热重载；关闭：--no-reload）
 fjtoolkit serve --host 127.0.0.1 --port 8000
 ```
 
@@ -143,6 +154,8 @@ fjtoolkit serve --host 127.0.0.1 --port 8000
 退出码：判定为 Fastjson 时为 `0`，否则 `1`。
 
 ## HTTP API
+
+交互式文档（[Scalar](https://github.com/scalar/scalar) / Swagger / ReDoc）见上表；也可在 Web 顶栏点「API 文档」。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -182,7 +195,7 @@ $env:NODE_USE_ENV_PROXY='1'
 ## 目录结构
 
 ```
-├── start.* / stop.*          # 一键启停 Web（不含 Docker 靶场）
+├── scripts/start.* / stop.*  # 一键启停 Web（默认后端 --reload，不含靶场）
 ├── docs/design.md            # 设计与阶段规划
 ├── src/fastjson_toolkit/     # Python 后端（detect / api / cli / dnslog）
 ├── web/                      # Next.js + shadcn 前端

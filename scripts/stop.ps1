@@ -6,12 +6,22 @@ param(
 
 $ErrorActionPreference = "Continue"
 
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = Split-Path -Parent $ScriptDir
 $Runtime = Join-Path $Root ".runtime"
 $PidBackend = Join-Path $Runtime "backend.pid"
 $PidFrontend = Join-Path $Runtime "frontend.pid"
 $BackendPort = if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { 8000 }
 $FrontendPort = if ($env:FRONTEND_PORT) { [int]$env:FRONTEND_PORT } else { 3000 }
+
+function Stop-PidTree([int]$ProcId) {
+    # Kill children first (uvicorn --reload spawns a worker).
+    Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcId" -ErrorAction SilentlyContinue |
+        ForEach-Object { Stop-PidTree ([int]$_.ProcessId) }
+    try {
+        Stop-Process -Id $ProcId -Force -ErrorAction SilentlyContinue
+    } catch {}
+}
 
 function Stop-PidFile([string]$Name, [string]$PidFile) {
     if (-not (Test-Path $PidFile)) { return }
@@ -20,7 +30,7 @@ function Stop-PidFile([string]$Name, [string]$PidFile) {
         try {
             Get-Process -Id ([int]$procId) -ErrorAction Stop | Out-Null
             Write-Host "[*] stopping $Name (pid=$procId)"
-            Stop-Process -Id ([int]$procId) -Force -ErrorAction SilentlyContinue
+            Stop-PidTree ([int]$procId)
         } catch {}
     }
     Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
@@ -33,7 +43,7 @@ function Stop-PortListeners([int]$Port) {
     foreach ($procId in $ids) {
         if ($procId -and $procId -ne 0) {
             Write-Host "[*] freeing port :$Port (pid=$procId)"
-            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+            Stop-PidTree ([int]$procId)
         }
     }
 }

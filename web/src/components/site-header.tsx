@@ -31,6 +31,14 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
+          <a
+            href="/api/docs"
+            target="_blank"
+            rel="noreferrer"
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+          >
+            API 文档
+          </a>
         </nav>
         <div className="ml-auto">
           <ThemeToggle />

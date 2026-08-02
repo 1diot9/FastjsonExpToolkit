@@ -62,6 +62,7 @@ Backend (Python)
   - `POST /api/detect`
   - `GET/PUT /api/settings`（CEYE Token / Identifier，写入 `.env`）
   - `POST /api/settings/ceye-test`
+  - API 文档：`/api/docs`（Scalar）、`/api/swagger`、`/api/redoc`、`/api/openapi.json`
 - 前端：Next.js + shadcn（`web/`，开发时 rewrite 代理 `/api/*` → 后端）
 - 识别页已对接真实 API（靶场预设、DNS/CEYE 开关、得分/证据/JSON）
 - 设置页可配置 CEYE Token 与 Identifier 子域名
@@ -118,7 +119,7 @@ Backend (Python)
 ## 6. 关键目录
 
 ```
-├── start.* / stop.*          # 一键启停 Web（不含靶场）
+├── scripts/start.* / stop.*  # 一键启停 Web（不含靶场）
 ├── docs/design.md            # 本文档
 ├── src/fastjson_toolkit/     # 后端核心（detect / api / cli / dnslog）
 ├── web/                      # Next.js + shadcn

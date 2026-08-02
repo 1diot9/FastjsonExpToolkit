@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from scalar_fastapi import Theme, get_scalar_api_reference
 
 from fastjson_toolkit import __version__
 from fastjson_toolkit.api.schemas import (
@@ -25,6 +26,19 @@ from fastjson_toolkit.config import (
 from fastjson_toolkit.detect import DetectResult, FastjsonDetector
 from fastjson_toolkit.detect.probes import all_probes
 from fastjson_toolkit.dnslog import CeyeClient, CeyeConfig
+
+API_DESCRIPTION = """
+FastjsonExpToolkit 后端 API：识别、设置与探针编排。
+
+## 文档入口
+
+| 路径 | 说明 |
+|------|------|
+| `/api/docs` | **Scalar**（推荐） |
+| `/api/swagger` | Swagger UI |
+| `/api/redoc` | ReDoc |
+| `/api/openapi.json` | OpenAPI JSON |
+"""
 
 
 def _settings_response() -> SettingsResponse:
@@ -56,7 +70,11 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="FastjsonExpToolkit API",
         version=__version__,
-        description="Web / Agent 共用后端 API",
+        description=API_DESCRIPTION,
+        docs_url="/api/swagger",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
+        swagger_ui_parameters={"persistAuthorization": True},
     )
     app.add_middleware(
         CORSMiddleware,
@@ -66,7 +84,25 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.get("/api/health", response_model=HealthResponse)
+    @app.get("/api/docs", include_in_schema=False)
+    def api_docs():
+        """Scalar API Reference（第三方文档 UI）。"""
+        return get_scalar_api_reference(
+            openapi_url=app.openapi_url,
+            title=f"{app.title} · Docs",
+            theme=Theme.KEPLER,
+            dark_mode=True,
+            hide_download_button=False,
+            show_sidebar=True,
+            default_open_all_tags=True,
+        )
+
+    @app.get(
+        "/api/health",
+        response_model=HealthResponse,
+        tags=["system"],
+        summary="健康检查",
+    )
     def health() -> HealthResponse:
         cfg = CeyeConfig.from_env()
         return HealthResponse(
@@ -76,11 +112,21 @@ def create_app() -> FastAPI:
             ceye_domain=cfg.domain if cfg else None,
         )
 
-    @app.get("/api/settings", response_model=SettingsResponse)
+    @app.get(
+        "/api/settings",
+        response_model=SettingsResponse,
+        tags=["settings"],
+        summary="读取 CEYE 设置",
+    )
     def get_settings() -> SettingsResponse:
         return _settings_response()
 
-    @app.put("/api/settings", response_model=SettingsUpdateResponse)
+    @app.put(
+        "/api/settings",
+        response_model=SettingsUpdateResponse,
+        tags=["settings"],
+        summary="保存 CEYE 设置",
+    )
     def update_settings(req: SettingsUpdateRequest) -> SettingsUpdateResponse:
         try:
             identifier, domain = normalize_ceye_identifier(req.ceye_identifier)
@@ -112,7 +158,11 @@ def create_app() -> FastAPI:
             ),
         )
 
-    @app.post("/api/settings/ceye-test")
+    @app.post(
+        "/api/settings/ceye-test",
+        tags=["settings"],
+        summary="测试 CEYE API",
+    )
     def test_ceye() -> dict[str, Any]:
         cfg = CeyeConfig.from_env()
         if cfg is None:
@@ -129,7 +179,11 @@ def create_app() -> FastAPI:
             "message": "CEYE API 可用",
         }
 
-    @app.get("/api/probes")
+    @app.get(
+        "/api/probes",
+        tags=["detect"],
+        summary="列出识别探针",
+    )
     def list_probes(dnslog: str | None = None) -> list[dict[str, Any]]:
         return [
             {
@@ -145,7 +199,12 @@ def create_app() -> FastAPI:
             for p in all_probes(dnslog)
         ]
 
-    @app.post("/api/detect", response_model=DetectResult)
+    @app.post(
+        "/api/detect",
+        response_model=DetectResult,
+        tags=["detect"],
+        summary="Fastjson 识别",
+    )
     def detect(req: DetectRequest) -> DetectResult:
         target = req.target.strip()
         if not target:
