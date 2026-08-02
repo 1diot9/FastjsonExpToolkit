@@ -866,7 +866,9 @@ class FastjsonVersionDetector:
                 "AutoType 开启且无报错回显时，68/80/83 侧信道易混淆；优先找 AT 关闭或有回显的入口"
             )
         if autotype_enabled is False and safemode_enabled is not True:
-            next_actions.append("AutoType 关闭时优先考虑 expectClass / 其他绕过面")
+            next_actions.append(
+                "AutoType 关闭时优先打开 /expect 确认是否存在期望类，再评估绕过面"
+            )
         if dns_skip_reason:
             next_actions.append("在设置页配置 CEYE，或填写自定义 DNSLog 域名后再开 DNS")
         elif dns_hits and FastjsonVersionDetector._dns_overfired(dns_hits):

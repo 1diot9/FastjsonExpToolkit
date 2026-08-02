@@ -2,10 +2,13 @@ import Link from "next/link";
 import {
   ArrowRight,
   BookOpen,
+  Bomb,
   Fingerprint,
   PackageSearch,
   ScanSearch,
   Settings,
+  Shapes,
+  ShieldOff,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,13 +26,13 @@ export default function Home() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 px-6 py-16">
       <div className="space-y-3">
-        <Badge variant="secondary">Phase 2</Badge>
+        <Badge variant="secondary">Phase 3</Badge>
         <h1 className="text-3xl font-semibold tracking-tight">
           FastjsonExpToolkit
         </h1>
         <p className="max-w-xl text-muted-foreground">
-          Fastjson 识别 / 版本 / 依赖探测 / PoC 工具箱。当前已打通识别、版本与依赖
-          Web 前后端；UI 基于{" "}
+          Fastjson 识别 / 版本 / 期望类 / 依赖探测 / PoC / WAF 绕过工具箱。已打通识别、版本、期望类、依赖、
+          PoC 与 WAF 变换；UI 基于{" "}
           <a
             className="underline underline-offset-4"
             href="https://ui.shadcn.com/"
@@ -82,6 +85,24 @@ export default function Home() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
+              <Shapes className="size-5" />
+              期望类探测
+            </CardTitle>
+            <CardDescription>
+              对接 <code>/api/expect</code>，判断是否绑定期望类 / 非 Map。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/expect" className={cn(buttonVariants())}>
+              打开期望类页
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
               <PackageSearch className="size-5" />
               依赖探测
             </CardTitle>
@@ -92,6 +113,42 @@ export default function Home() {
           <CardContent>
             <Link href="/deps" className={cn(buttonVariants())}>
               打开依赖页
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bomb className="size-5" />
+              1.2.83 PoC
+            </CardTitle>
+            <CardDescription>
+              ≤1.2.47 缓存绕过、≤1.2.68 AutoCloseable、1.2.83 CVE-2026-16723。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/poc" className={cn(buttonVariants())}>
+              打开 PoC 页
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldOff className="size-5" />
+              WAF 绕过
+            </CardTitle>
+            <CardDescription>
+              unicode/hex、多逗号、key _/-、填充等本地 payload 变换。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/waf" className={cn(buttonVariants())}>
+              打开 WAF 页
               <ArrowRight className="size-4" data-icon="inline-end" />
             </Link>
           </CardContent>

@@ -109,4 +109,4 @@ npm install
 npm run dev
 ```
 
-后端探测逻辑在 `src/fastjson_toolkit/`；Web 页面对接 API 时复用其结构化输出（如 `DetectResult`），勿在前端重写探针。
+后端探测逻辑在 `src/fastjson_toolkit/`（`detect` / `version` / `expect` / `deps`）；Web 页面对接 API 时复用其结构化输出（如 `DetectResult` / `ExpectClassResult`），勿在前端重写探针。

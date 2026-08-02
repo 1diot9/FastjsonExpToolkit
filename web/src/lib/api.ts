@@ -278,6 +278,53 @@ export async function fetchDepsCatalog(): Promise<DepCatalogEntry[]> {
   return res.json();
 }
 
+export type ExpectEvidence = {
+  probe_id: string;
+  category: string;
+  description: string;
+  payload: string;
+  status_code: number;
+  elapsed_ms: number;
+  errored: boolean | null;
+  matched: string[];
+  response_excerpt: string;
+  interpretation: string;
+};
+
+export type ExpectClassResult = {
+  target: string;
+  has_expect_class: boolean | null;
+  expect_not_map: boolean | null;
+  version_lt_1_2_68_hint: boolean | null;
+  confidence: number;
+  base_body: string;
+  methods_used: string[];
+  evidence: ExpectEvidence[];
+  summary: string;
+  next_actions: string[];
+  notes: string[];
+  raw: Record<string, unknown>;
+};
+
+export type ExpectClassRequest = {
+  target: string;
+  base_body?: string | null;
+  timeout?: number;
+  insecure?: boolean;
+};
+
+export async function detectExpectClass(
+  body: ExpectClassRequest,
+): Promise<ExpectClassResult> {
+  const res = await apiFetch("/api/expect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
 export async function fetchSettings(): Promise<SettingsResponse> {
   const res = await apiFetch("/api/settings");
   if (!res.ok) throw new Error(await readError(res));
@@ -299,6 +346,256 @@ export async function updateSettings(
 export async function testCeye(): Promise<CeyeTestResponse> {
   const res = await apiFetch("/api/settings/ceye-test", {
     method: "POST",
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export type Poc16723Request = {
+  target: string;
+  mode?: "http" | "fd";
+  host?: string;
+  port?: number;
+  cmd?: string;
+  echo?: boolean;
+  engine?: "auto" | "spring" | "undertow" | "tomcat";
+  json_path?: string;
+  docker_container?: string;
+  reuse_type?: string | null;
+  memshell?: boolean;
+};
+
+export type Poc16723Result = {
+  ok: boolean;
+  exit_code: number;
+  cve: string;
+  mode: string;
+  target: string;
+  summary: string;
+  logs: string[];
+  notes: string[];
+  raw: Record<string, unknown>;
+};
+
+export async function runPoc16723(
+  body: Poc16723Request,
+): Promise<Poc16723Result> {
+  const res = await apiFetch("/api/poc/cve-2026-16723", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export type WafOptions = {
+  encode_keys?: boolean;
+  encode_values?: boolean;
+  encode_targets?: string[];
+  key_targets?: string[];
+  include_type_key?: boolean;
+  use_single_quote?: boolean;
+  comma_count?: number;
+  pad_size?: number;
+  pad_char?: string;
+  pad_key?: string;
+};
+
+export type Poc1247Gadget = {
+  id: string;
+  title: string;
+  description: string;
+  requires: string[];
+  jdk: string;
+  input_fields: string[];
+  references: string[];
+};
+
+export type Poc1247Request = {
+  gadget: string;
+  jndi_url?: string | null;
+  bcel_code?: string | null;
+  class_b64?: string | null;
+  user_overrides?: string | null;
+  serialized_b64?: string | null;
+  h2_url?: string | null;
+  getter_trigger?: string;
+  currency_field?: string;
+  json_key_with_type?: boolean;
+  json_key_as_array?: boolean;
+  waf_techniques?: string[];
+  waf_options?: WafOptions;
+  target?: string;
+  send?: boolean;
+};
+
+export type Poc1247Result = {
+  ok: boolean;
+  gadget: string;
+  title: string;
+  payload: string;
+  payload_raw?: string | null;
+  getter_trigger?: string;
+  waf_techniques?: string[];
+  sent: boolean;
+  status_code: number | null;
+  response_preview: string;
+  summary: string;
+  notes: string[];
+  requires: string[];
+  jdk: string;
+};
+
+export async function listPoc1247Gadgets(): Promise<Poc1247Gadget[]> {
+  const res = await apiFetch("/api/poc/1.2.47/gadgets");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function runPoc1247(
+  body: Poc1247Request,
+): Promise<Poc1247Result> {
+  const res = await apiFetch("/api/poc/1.2.47", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export type Poc1268Gadget = Poc1247Gadget;
+
+export type Poc1268Request = {
+  gadget: string;
+  file?: string | null;
+  content?: string | null;
+  source?: string | null;
+  url?: string | null;
+  guess_byte?: number | null;
+  host?: string | null;
+  port?: number | null;
+  user?: string | null;
+  jdbc_url?: string | null;
+  socket_factory_arg?: string | null;
+  wrap_currency?: boolean;
+  currency_field?: string;
+  waf_techniques?: string[];
+  waf_options?: WafOptions;
+  target?: string;
+  send?: boolean;
+};
+
+export type Poc1268Result = Poc1247Result & { wrap_currency?: boolean };
+
+export async function listPoc1268Gadgets(): Promise<Poc1268Gadget[]> {
+  const res = await apiFetch("/api/poc/1.2.68/gadgets");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function runPoc1268(
+  body: Poc1268Request,
+): Promise<Poc1268Result> {
+  const res = await apiFetch("/api/poc/1.2.68", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export type Poc1280Gadget = Poc1247Gadget & { steps?: number };
+
+export type Poc1280Request = {
+  gadget: string;
+  file?: string | null;
+  content?: string | null;
+  url?: string | null;
+  guess_byte?: number | null;
+  host?: string | null;
+  port?: number | null;
+  user?: string | null;
+  socket_factory_arg?: string | null;
+  classpath?: string | null;
+  wrap_currency?: boolean;
+  currency_field?: string;
+  waf_techniques?: string[];
+  waf_options?: WafOptions;
+  target?: string;
+  send?: boolean;
+  reset_cache?: boolean;
+};
+
+export type Poc1280Result = Poc1247Result & {
+  steps?: string[];
+  steps_raw?: string[];
+  wrap_currency?: boolean;
+  status_codes?: number[];
+  response_previews?: string[];
+};
+
+export async function listPoc1280Gadgets(): Promise<Poc1280Gadget[]> {
+  const res = await apiFetch("/api/poc/1.2.80/gadgets");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function runPoc1280(
+  body: Poc1280Request,
+): Promise<Poc1280Result> {
+  const res = await apiFetch("/api/poc/1.2.80", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export type WafTechnique = {
+  id: string;
+  title: string;
+  description: string;
+  notes: string[];
+};
+
+export type WafVariant = {
+  technique: string;
+  title: string;
+  payload: string;
+  description: string;
+};
+
+export type WafRequest = {
+  payload: string;
+  techniques?: string[];
+  mode?: "stack" | "variants";
+  options?: WafOptions;
+};
+
+export type WafResult = {
+  original: string;
+  payload: string;
+  techniques: string[];
+  variants: WafVariant[];
+  notes: string[];
+  summary: string;
+};
+
+export async function listWafTechniques(): Promise<WafTechnique[]> {
+  const res = await apiFetch("/api/waf/techniques");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function runWaf(body: WafRequest): Promise<WafResult> {
+  const res = await apiFetch("/api/waf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await readError(res));
   return res.json();

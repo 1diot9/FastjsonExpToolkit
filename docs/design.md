@@ -43,11 +43,15 @@ Backend (Python)
 | 识别引擎 | `src/fastjson_toolkit/detect/`：报错、解析特征、`$ref`、与其他库差异探针 |
 | 版本引擎 | `src/fastjson_toolkit/version/`：AutoType / SafeMode / AutoCloseable 回显 / 1.2.83 / 不出网二分 / DNS |
 | 依赖引擎 | `src/fastjson_toolkit/deps/`：Character 报错 classpath 探测 + DNS Locale（实验性） |
+| 期望类引擎 | `src/fastjson_toolkit/expect/`：Feature `@type` + 空键语法，判断是否绑定期望类 |
 | 判定策略 | 仅强特征可判定 Fastjson；差异探针不单独定论，避免 Gson/Hutool 误报 |
 | CEYE DNSLog | `hpdth2.ceye.io` + API 轮询确认出网（`.env` 配置 token） |
 | Docker 靶场 | `lab/docker-compose.yml`，多解析器端点 + `/api/fastjson/autotype` |
+| CVE-2026-16723 PoC | `src/fastjson_toolkit/poc/cve_2026_16723/`：jar:http / fd-cache / 回显 / 可选 MemShellParty |
+| Undertow 靶场 | `lab/cve-2026-16723/`，端口 `18083`，fat jar + JDK8 |
 | HTTP 性能 | 复用 `httpx.Client`，本地 detect ~1s 级 |
-| Web | 识别页 `/detect`、版本页 `/version`、依赖页 `/deps`、设置页 `/settings` |
+| Web | `/detect` `/version` `/expect` `/deps` `/poc` `/waf` `/settings` |
+| WAF 绕过 | `src/fastjson_toolkit/waf/`：unicode/hex/`\u+`、多逗号、key `_`/`-`、填充、URL 编码；`GET/POST /api/waf` |
 
 ### 3.2 靶场验证结论
 
@@ -66,17 +70,20 @@ Backend (Python)
   - `POST /api/version`
   - `GET /api/deps/catalog`
   - `POST /api/deps`
+  - `GET /api/expect/probes` / `POST /api/expect`
+  - `GET /api/poc/1.2.47/gadgets` / `POST /api/poc/1.2.47`
+  - `POST /api/poc/cve-2026-16723`
   - `GET/PUT /api/settings`（CEYE Token / Identifier，写入 `.env`）
   - `POST /api/settings/ceye-test`
   - API 文档：`/api/docs`（Scalar）、`/api/swagger`、`/api/redoc`、`/api/openapi.json`
 - 前端：Next.js + shadcn（`web/`，开发时 rewrite 代理 `/api/*` → 后端）
-- 识别页 / 版本页 / 依赖页已对接真实 API
+- 识别 / 版本 / 期望类 / 依赖 / PoC 页已对接真实 API
 - 设置页可配置 CEYE Token 与 Identifier 子域名
 
 ### 3.4 未完成（相对最终目标）
 
-- PoC、回显、内存马均未实现
-- 对应 Web 页面与 API 尚未扩展
+- 通用自定义字节码上传 UI；ognl+io / ajt+xalan 等少见组合链（仅文档引用）
+- 通用回显 / 内存马编排（1.2.83 证明 PoC 内已含专项实现）
 
 ---
 
@@ -91,10 +98,23 @@ Backend (Python)
   - 探针与微信笔记一致；DNS le47/le68 在 InetSocketAddress 可单独出网时会 overfire，推断会回退出网/回显
 - 输出：版本区间 / 置信度 / 证据；Web：`/version`（不另做 CLI）
 
-### Phase 3 — 各版本 PoC + 自定义字节码
+### Phase 3 — 各版本 PoC + 自定义字节码（进行中）
 
-- 覆盖常见版本链（按 Phase 2 结果推荐）
-- PoC 支持注入 **自定义字节码**（上传 class / base64）
+- ✅ CVE-2026-16723（1.2.83）：jar:http / fd-cache 证明 PoC + Undertow 靶场 + Web `/poc`
+- ✅ ≤1.2.47 Class 缓存绕过：JdbcRowSet / BCEL(dbcp×4) / C3P0 / MyBatis / H2 证明 payload 生成
+  - 模块：`src/fastjson_toolkit/poc/v1_2_47/`；API：`GET/POST /api/poc/1.2.47`；CLI：`fjtoolkit poc-1247`
+  - Web `/poc` Tab「≤1.2.47」一键生成 / 复制 / 可选 POST
+  - 依赖靶场：`lab/fastjson-1247-lab`（`:18147`，JDK8u242）；`scripts/lab_test_1247_gadgets.py` 全链落盘证明
+- ✅ ≤1.2.68 AutoCloseable expectClass：JDK 写/截断、commons-io（io1–io5/ioFinal/读）、MySQL/PG
+  - 模块：`src/fastjson_toolkit/poc/v1_2_68/`；API：`GET/POST /api/poc/1.2.68`；CLI：`fjtoolkit poc-1268`
+  - Web `/poc` Tab「≤1.2.68」；依赖靶场：`lab/fastjson-1268-lab`（`:18168`，JDK11）
+  - 验证：`scripts/lab_test_1268_gadgets.py`
+- ✅ ≤1.2.80 Exception expectClass + 反序列化器缓存：jackson→InputStream、commons-io 读写、PG/MySQL、groovy、aspectj、jython
+  - 模块：`src/fastjson_toolkit/poc/v1_2_80/`；API：`GET/POST /api/poc/1.2.80`；CLI：`fjtoolkit poc-1280`
+  - Web `/poc` Tab「≤1.2.80」；依赖靶场：`lab/fastjson-1280-lab`（`:18180`，JDK11，共享 ParserConfig）
+  - 验证：`scripts/lab_test_1280_gadgets.py`
+- 覆盖其余常见版本链（按 Phase 2 结果推荐）
+- PoC 支持注入 **自定义字节码**（上传 class / base64；1.2.47 BCEL/H2/C3P0 已支持）
 - 统一 payload 生成接口，供 Web 一键生成与复制
 
 ### Phase 4 — 回显
@@ -130,10 +150,10 @@ Backend (Python)
 ```
 ├── scripts/start.* / stop.*  # 一键启停 Web（不含靶场）
 ├── docs/design.md            # 本文档
-├── src/fastjson_toolkit/     # 后端核心（detect / version / deps / api / dnslog）
+├── src/fastjson_toolkit/     # 后端核心（detect / version / expect / deps / poc / api）
 ├── web/                      # Next.js + shadcn
-├── lab/                      # Docker 指纹靶场
+├── lab/                      # Docker 指纹靶场 + cve-2026-16723
 └── tests/                    # 单元测试
 ```
 
-下一阶段：各版本 PoC + 自定义字节码。
+下一阶段：其余版本 PoC 链 + 自定义字节码上传。

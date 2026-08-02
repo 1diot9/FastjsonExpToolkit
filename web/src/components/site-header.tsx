@@ -10,7 +10,10 @@ const links = [
   { href: "/", label: "首页" },
   { href: "/detect", label: "识别" },
   { href: "/version", label: "版本" },
+  { href: "/expect", label: "期望类" },
   { href: "/deps", label: "依赖" },
+  { href: "/poc", label: "PoC" },
+  { href: "/waf", label: "WAF" },
   { href: "/settings", label: "设置" },
 ];
 

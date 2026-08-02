@@ -12,7 +12,12 @@ from fastjson_toolkit import __version__
 from fastjson_toolkit.api.schemas import (
     DepsRequest,
     DetectRequest,
+    ExpectClassRequest,
     HealthResponse,
+    Poc1247Request,
+    Poc1268Request,
+    Poc1280Request,
+    Poc16723Request,
     SettingsResponse,
     SettingsUpdateRequest,
     SettingsUpdateResponse,
@@ -29,10 +34,42 @@ from fastjson_toolkit.deps import DepsResult, FastjsonDepsDetector, default_cata
 from fastjson_toolkit.detect import DetectResult, FastjsonDetector
 from fastjson_toolkit.detect.probes import all_probes
 from fastjson_toolkit.dnslog import CeyeClient, CeyeConfig
+from fastjson_toolkit.expect import (
+    ExpectClassResult,
+    FastjsonExpectClassDetector,
+    all_expect_probes,
+)
+from fastjson_toolkit.poc import (
+    Poc1247SendOptions,
+    Poc1247SendResult,
+    Poc1268SendOptions,
+    Poc1268SendResult,
+    Poc1280SendOptions,
+    Poc1280SendResult,
+    Poc16723Options,
+    Poc16723Result,
+    list_poc_1247_gadgets,
+    list_poc_1268_gadgets,
+    list_poc_1280_gadgets,
+    run_cve_2026_16723,
+    run_poc_1247,
+    run_poc_1268,
+    run_poc_1280,
+)
+from fastjson_toolkit.poc.v1_2_47 import get_gadget as get_poc_1247_gadget
+from fastjson_toolkit.poc.v1_2_68 import get_gadget as get_poc_1268_gadget
+from fastjson_toolkit.poc.v1_2_80 import get_gadget as get_poc_1280_gadget
 from fastjson_toolkit.version import FastjsonVersionDetector, VersionResult, all_version_probes
+from fastjson_toolkit.waf import (
+    WafRequest,
+    WafResult,
+    WafTechniqueInfo,
+    list_techniques,
+    run_waf,
+)
 
 API_DESCRIPTION = """
-FastjsonExpToolkit 后端 API：识别、版本探测、依赖探测、设置与探针编排。
+FastjsonExpToolkit 后端 API：识别、版本探测、期望类探测、依赖探测、PoC、WAF 绕过、设置与探针编排。
 
 ## 文档入口
 
@@ -370,6 +407,293 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=f"依赖探测失败: {exc}") from exc
         finally:
             detector.close()
+
+    @app.get(
+        "/api/expect/probes",
+        tags=["expect"],
+        summary="列出期望类探针",
+    )
+    def list_expect_probes(base_body: str | None = None) -> list[dict[str, Any]]:
+        try:
+            probes = all_expect_probes(base_body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return [
+            {
+                "id": p.id,
+                "category": p.category,
+                "description": p.description,
+                "payload": p.payload,
+            }
+            for p in probes
+        ]
+
+    @app.post(
+        "/api/expect",
+        response_model=ExpectClassResult,
+        tags=["expect"],
+        summary="期望类（expectClass）探测",
+    )
+    def expect_detect(req: ExpectClassRequest) -> ExpectClassResult:
+        target = req.target.strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="target 不能为空")
+
+        detector = FastjsonExpectClassDetector(
+            timeout=req.timeout,
+            headers=req.headers or None,
+            proxy=req.proxy,
+            verify_tls=not req.insecure,
+            content_type=req.content_type,
+        )
+        try:
+            return detector.detect(target, base_body=req.base_body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"期望类探测失败: {exc}") from exc
+        finally:
+            detector.close()
+
+    @app.get(
+        "/api/poc/1.2.47/gadgets",
+        tags=["poc"],
+        summary="Fastjson ≤1.2.47 gadget 目录",
+    )
+    def poc_1247_gadgets() -> list[dict[str, Any]]:
+        return list_poc_1247_gadgets()
+
+    @app.post(
+        "/api/poc/1.2.47",
+        response_model=Poc1247SendResult,
+        tags=["poc"],
+        summary="Fastjson ≤1.2.47 缓存绕过证明 PoC",
+        description=(
+            "生成 Class 缓存绕过 payload（JdbcRowSet / BCEL+dbcp / C3P0 / MyBatis / H2）。"
+            "默认只生成；send=true 时 POST 到 target（授权测试）。"
+        ),
+    )
+    def poc_1247(req: Poc1247Request) -> Poc1247SendResult:
+        try:
+            get_poc_1247_gadget(req.gadget)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        opts = Poc1247SendOptions(
+            gadget=req.gadget,
+            jndi_url=req.jndi_url,
+            bcel_code=req.bcel_code,
+            class_b64=req.class_b64,
+            user_overrides=req.user_overrides,
+            serialized_b64=req.serialized_b64,
+            h2_url=req.h2_url,
+            getter_trigger=req.getter_trigger,
+            currency_field=req.currency_field,
+            json_key_with_type=req.json_key_with_type,
+            json_key_as_array=req.json_key_as_array,
+            waf_techniques=list(req.waf_techniques or []),
+            waf_options=req.waf_options,
+            target=req.target,
+            send=req.send,
+            timeout=req.timeout,
+            headers=req.headers or {},
+            proxy=req.proxy,
+            insecure=req.insecure,
+            content_type=req.content_type,
+        )
+        try:
+            return run_poc_1247(opts)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"PoC 失败: {exc}") from exc
+
+    @app.get(
+        "/api/poc/1.2.68/gadgets",
+        tags=["poc"],
+        summary="Fastjson ≤1.2.68 gadget 目录",
+    )
+    def poc_1268_gadgets() -> list[dict[str, Any]]:
+        return list_poc_1268_gadgets()
+
+    @app.post(
+        "/api/poc/1.2.68",
+        response_model=Poc1268SendResult,
+        tags=["poc"],
+        summary="Fastjson ≤1.2.68 AutoCloseable 证明 PoC",
+        description=(
+            "生成 expectClass(AutoCloseable) 绕过 payload（JDK 写/截断、commons-io、"
+            "MySQL/PG 等）。默认只生成；send=true 时 POST 到 target（授权测试）。"
+            "依赖靶场：lab/fastjson-1268-lab :18168。"
+        ),
+    )
+    def poc_1268(req: Poc1268Request) -> Poc1268SendResult:
+        try:
+            get_poc_1268_gadget(req.gadget)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        opts = Poc1268SendOptions(
+            gadget=req.gadget,
+            file=req.file,
+            content=req.content,
+            source=req.source,
+            url=req.url,
+            guess_byte=req.guess_byte,
+            bom_bytes=req.bom_bytes,
+            host=req.host,
+            port=req.port,
+            user=req.user,
+            jdbc_url=req.jdbc_url,
+            socket_factory_arg=req.socket_factory_arg,
+            wrap_currency=req.wrap_currency,
+            currency_field=req.currency_field,
+            waf_techniques=list(req.waf_techniques or []),
+            waf_options=req.waf_options,
+            target=req.target,
+            send=req.send,
+            timeout=req.timeout,
+            headers=req.headers or {},
+            proxy=req.proxy,
+            insecure=req.insecure,
+            content_type=req.content_type,
+        )
+        try:
+            return run_poc_1268(opts)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"PoC 失败: {exc}") from exc
+
+    @app.get(
+        "/api/poc/1.2.80/gadgets",
+        tags=["poc"],
+        summary="Fastjson ≤1.2.80 gadget 目录",
+    )
+    def poc_1280_gadgets() -> list[dict[str, Any]]:
+        return list_poc_1280_gadgets()
+
+    @app.post(
+        "/api/poc/1.2.80",
+        response_model=Poc1280SendResult,
+        tags=["poc"],
+        summary="Fastjson ≤1.2.80 Exception 缓存证明 PoC",
+        description=(
+            "生成 Exception expectClass + 反序列化器缓存绕过 payload（jackson→InputStream、"
+            "commons-io、PG/MySQL、groovy、aspectj、jython）。多步链按 steps 顺序发送。"
+            "依赖靶场：lab/fastjson-1280-lab :18180。"
+        ),
+    )
+    def poc_1280(req: Poc1280Request) -> Poc1280SendResult:
+        try:
+            get_poc_1280_gadget(req.gadget)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        opts = Poc1280SendOptions(
+            gadget=req.gadget,
+            file=req.file,
+            content=req.content,
+            url=req.url,
+            guess_byte=req.guess_byte,
+            host=req.host,
+            port=req.port,
+            user=req.user,
+            socket_factory_arg=req.socket_factory_arg,
+            classpath=req.classpath,
+            wrap_currency=req.wrap_currency,
+            currency_field=req.currency_field,
+            waf_techniques=list(req.waf_techniques or []),
+            waf_options=req.waf_options,
+            target=req.target,
+            send=req.send,
+            reset_cache=req.reset_cache,
+            timeout=req.timeout,
+            headers=req.headers or {},
+            proxy=req.proxy,
+            insecure=req.insecure,
+            content_type=req.content_type,
+        )
+        try:
+            return run_poc_1280(opts)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"PoC 失败: {exc}") from exc
+
+    @app.get(
+        "/api/waf/techniques",
+        response_model=list[WafTechniqueInfo],
+        tags=["waf"],
+        summary="列出 WAF 绕过变换",
+    )
+    def waf_techniques() -> list[WafTechniqueInfo]:
+        return list_techniques()
+
+    @app.post(
+        "/api/waf",
+        response_model=WafResult,
+        tags=["waf"],
+        summary="对 payload 应用 WAF 绕过变换",
+        description=(
+            "支持 unicode/hex/\\u+、多逗号、key 插入 _/-、字符填充、value URL 编码等。"
+            "mode=stack 按 techniques 顺序叠加；mode=variants（或 techniques 为空）生成各单项变体。"
+        ),
+    )
+    def waf_transform(req: WafRequest) -> WafResult:
+        try:
+            return run_waf(req)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"WAF 变换失败: {exc}") from exc
+
+    @app.post(
+        "/api/poc/cve-2026-16723",
+        response_model=Poc16723Result,
+        tags=["poc"],
+        summary="CVE-2026-16723（Fastjson 1.2.83）证明 PoC",
+        description=(
+            "jar:http 出网 / fd-cache 不出网证明。需本机 javac、fastjson-1.2.83.jar，"
+            "以及可出网的攻击者 HTTP 端口。Docker 靶场：lab/cve-2026-16723。"
+        ),
+    )
+    def poc_cve_2026_16723(req: Poc16723Request) -> Poc16723Result:
+        mode = (req.mode or "http").strip().lower()
+        if mode not in ("http", "fd"):
+            raise HTTPException(status_code=400, detail="mode 仅支持 http 或 fd")
+        engine = (req.engine or "auto").strip().lower()
+        if engine not in ("auto", "spring", "undertow", "tomcat"):
+            raise HTTPException(
+                status_code=400, detail="engine 仅支持 auto/spring/undertow/tomcat"
+            )
+        target = req.target.strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="target 不能为空")
+
+        opts = Poc16723Options(
+            target=target,
+            mode=mode,  # type: ignore[arg-type]
+            host=req.host,
+            port=req.port,
+            cmd=req.cmd,
+            echo=req.echo,
+            engine=engine,  # type: ignore[arg-type]
+            json_path=req.json_path,
+            docker_container=req.docker_container,
+            reuse_type=req.reuse_type,
+            memshell=req.memshell,
+            ms_api=req.ms_api,
+            ms_server=req.ms_server,
+            ms_tool=req.ms_tool,
+            ms_type=req.ms_type,
+            ms_path=req.ms_path,
+            ms_jdk=req.ms_jdk,
+        )
+        try:
+            return run_cve_2026_16723(opts)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"PoC 执行失败: {exc}") from exc
 
     return app
 

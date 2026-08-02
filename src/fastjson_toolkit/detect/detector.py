@@ -390,7 +390,8 @@ class FastjsonDetector:
                 parts.append("DNS 探针耗时明显增加")
             next_actions = [
                 "打开版本识别页 /version，收敛版本区间",
-                "若 autoType 关闭，优先考虑 expect/其它绕过链",
+                "打开期望类页 /expect，判断反序列化点是否绑定期望类",
+                "若 autoType 关闭，优先考虑 expectClass / 其它绕过链",
                 "可对 /api/fastjson/autotype 类开启点复测 DNSLog",
             ]
             return "；".join(parts), next_actions

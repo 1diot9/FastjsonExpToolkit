@@ -1,0 +1,19 @@
+services:
+  fastjson-1247-lab:
+    build: .
+    image: fastjson-exp-toolkit/fastjson-1247-lab:1.2.47
+    container_name: fastjson-1247-lab
+    ports:
+      - "18147:18080"
+    environment:
+      SERVER_PORT: "18080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "attacker:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
