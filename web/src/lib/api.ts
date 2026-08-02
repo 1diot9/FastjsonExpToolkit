@@ -146,6 +146,137 @@ export async function detectFastjson(body: DetectRequest): Promise<DetectResult>
   return res.json();
 }
 
+export type VersionEvidence = {
+  probe_id: string;
+  category: string;
+  description: string;
+  payload: string;
+  status_code: number;
+  elapsed_ms: number;
+  errored: boolean | null;
+  matched: string[];
+  response_excerpt: string;
+  interpretation: string;
+};
+
+export type VersionResult = {
+  target: string;
+  autotype_enabled: boolean | null;
+  reported_version: string | null;
+  reported_version_note: string | null;
+  is_1_2_83_hint: boolean | null;
+  version_range: string | null;
+  confidence: number;
+  methods_used: string[];
+  evidence: VersionEvidence[];
+  dns_filter: string | null;
+  dns_records: Array<{
+    name?: string;
+    remote_addr?: string;
+    created_at?: string;
+  }>;
+  dns_hits: Record<string, boolean>;
+  summary: string;
+  next_actions: string[];
+  raw: Record<string, unknown>;
+};
+
+export type VersionRequest = {
+  target: string;
+  include_dns?: boolean;
+  use_ceye?: boolean;
+  dnslog?: string | null;
+  ceye_wait?: number;
+  timeout?: number;
+  insecure?: boolean;
+};
+
+export async function detectVersion(body: VersionRequest): Promise<VersionResult> {
+  const res = await apiFetch("/api/version", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export type DepStatus = "present" | "absent" | "unknown" | "error";
+export type DepMethod = "character" | "dns";
+
+export type DepHit = {
+  clazz: string;
+  description: string;
+  category: string;
+  status: DepStatus;
+  method: DepMethod;
+  matched: string[];
+  status_code: number;
+  elapsed_ms: number;
+  response_excerpt: string;
+  payload: string;
+  dns_filter: string | null;
+  dns_hit: boolean | null;
+  error: string | null;
+};
+
+export type DepsResult = {
+  target: string;
+  method: DepMethod;
+  scanned: number;
+  present_count: number;
+  absent_count: number;
+  unknown_count: number;
+  error_count: number;
+  present: DepHit[];
+  results: DepHit[];
+  dns_filter: string | null;
+  dns_records: Array<{
+    name?: string;
+    remote_addr?: string;
+    created_at?: string;
+  }>;
+  summary: string;
+  next_actions: string[];
+  notes: string[];
+  raw: Record<string, unknown>;
+};
+
+export type DepsRequest = {
+  target: string;
+  method?: DepMethod;
+  classes?: string[];
+  categories?: string[];
+  use_ceye?: boolean;
+  dnslog?: string | null;
+  ceye_wait?: number;
+  timeout?: number;
+  concurrency?: number;
+  insecure?: boolean;
+};
+
+export type DepCatalogEntry = {
+  class: string;
+  description: string;
+  category: string;
+};
+
+export async function detectDeps(body: DepsRequest): Promise<DepsResult> {
+  const res = await apiFetch("/api/deps", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function fetchDepsCatalog(): Promise<DepCatalogEntry[]> {
+  const res = await apiFetch("/api/deps/catalog");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
 export async function fetchSettings(): Promise<SettingsResponse> {
   const res = await apiFetch("/api/settings");
   if (!res.ok) throw new Error(await readError(res));

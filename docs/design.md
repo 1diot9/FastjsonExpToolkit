@@ -34,53 +34,62 @@ Backend (Python)
 
 ---
 
-## 3. 当前进度（Phase 1：Fastjson 识别）
+## 3. 当前进度
 
 ### 3.1 已完成
 
 | 项 | 说明 |
 |----|------|
 | 识别引擎 | `src/fastjson_toolkit/detect/`：报错、解析特征、`$ref`、与其他库差异探针 |
+| 版本引擎 | `src/fastjson_toolkit/version/`：AutoType / AutoCloseable 回显 / 1.2.83 / 不出网二分 / DNS |
+| 依赖引擎 | `src/fastjson_toolkit/deps/`：Character 报错 classpath 探测 + DNS Locale（实验性） |
 | 判定策略 | 仅强特征可判定 Fastjson；差异探针不单独定论，避免 Gson/Hutool 误报 |
 | CEYE DNSLog | `hpdth2.ceye.io` + API 轮询确认出网（`.env` 配置 token） |
-| CLI | `fjtoolkit detect` / `ceye-check` / `probes` |
 | Docker 靶场 | `lab/docker-compose.yml`，多解析器端点 + `/api/fastjson/autotype` |
 | HTTP 性能 | 复用 `httpx.Client`，本地 detect ~1s 级 |
-| Web 骨架 | `web/`：Next.js + 已安装部分 shadcn 组件（识别页草稿） |
+| Web | 识别页 `/detect`、版本页 `/version`、依赖页 `/deps`、设置页 `/settings` |
 
 ### 3.2 靶场验证结论
 
 - Fastjson → `is_fastjson=true`
 - Jackson / Gson / Hutool / org.json → `is_fastjson=false`
 - autoType 开启端点可走 CEYE DNS 确认
+- 版本探测：本地靶场 Fastjson 1.2.83 可由 offline + 1.2.83 探针收敛
 
-### 3.3 Web 前后端（进行中 / 已打通识别）
+### 3.3 Web 前后端
 
-- 后端：FastAPI（`fjtoolkit serve`，默认 `http://127.0.0.1:8000`）
+- 后端：FastAPI（`fjtoolkit serve` / `uvicorn`，默认 `http://127.0.0.1:8000`）
   - `GET /api/health`
   - `GET /api/probes`
   - `POST /api/detect`
+  - `GET /api/version/probes`
+  - `POST /api/version`
+  - `GET /api/deps/catalog`
+  - `POST /api/deps`
   - `GET/PUT /api/settings`（CEYE Token / Identifier，写入 `.env`）
   - `POST /api/settings/ceye-test`
   - API 文档：`/api/docs`（Scalar）、`/api/swagger`、`/api/redoc`、`/api/openapi.json`
 - 前端：Next.js + shadcn（`web/`，开发时 rewrite 代理 `/api/*` → 后端）
-- 识别页已对接真实 API（靶场预设、DNS/CEYE 开关、得分/证据/JSON）
+- 识别页 / 版本页 / 依赖页已对接真实 API
 - 设置页可配置 CEYE Token 与 Identifier 子域名
 
 ### 3.4 未完成（相对最终目标）
 
-- 版本识别、PoC、回显、内存马均未实现
-- 对应 Web 页面与 API 尚未扩展（识别相关 API/页面已完成）
+- PoC、回显、内存马均未实现
+- 对应 Web 页面与 API 尚未扩展
 
 ---
 
 ## 4. 后续工作
 
-### Phase 2 — 版本识别
+### Phase 2 — 版本识别（已完成）
 
-- 按版本差异构造探针（报错文案、autoType/expect 行为、已知 gadget 可达性等）
-- 输出：版本区间 / 置信度 / 证据列表
-- Web：版本识别页（shadcn Tabs / Table / Badge）
+- AutoType 双探针、AutoCloseable `fastjson-version` 回显、1.2.83 探针
+- 不出网二分（Exception / AutoCloseable / Class+Jdbc / Jdbc）
+- 四档区间：`<=1.2.47` / `<=1.2.68` / `<=1.2.80` / `1.2.83`
+  - DNSLog 双请求稳分 `1.2.83`；回显 `1.2.68` vs `1.2.76` 分 `<=68` / `<=80`；不出网 `Class+Jdbc` 分 `<=47`
+  - 探针与微信笔记一致；DNS le47/le68 在 InetSocketAddress 可单独出网时会 overfire，推断会回退出网/回显
+- 输出：版本区间 / 置信度 / 证据；Web：`/version`（不另做 CLI）
 
 ### Phase 3 — 各版本 PoC + 自定义字节码
 
@@ -101,7 +110,7 @@ Backend (Python)
 
 ### Phase 6 — Web 整合与联调
 
-- FastAPI（或同类）暴露：`/api/detect`、`/api/version`、`/api/poc`、`/api/memshell` 等
+- FastAPI 暴露：`/api/detect`、`/api/version`、`/api/poc`、`/api/memshell` 等
 - 前端页面：识别 → 版本 → PoC/回显 → 内存马 工作流
 - Docker 靶场扩展：版本矩阵、回显/内存马验证环境
 
@@ -121,10 +130,10 @@ Backend (Python)
 ```
 ├── scripts/start.* / stop.*  # 一键启停 Web（不含靶场）
 ├── docs/design.md            # 本文档
-├── src/fastjson_toolkit/     # 后端核心（detect / api / cli / dnslog）
+├── src/fastjson_toolkit/     # 后端核心（detect / version / deps / api / dnslog）
 ├── web/                      # Next.js + shadcn
 ├── lab/                      # Docker 指纹靶场
 └── tests/                    # 单元测试
 ```
 
-下一阶段：版本识别（API + Web 页）。
+下一阶段：各版本 PoC + 自定义字节码。

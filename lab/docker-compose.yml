@@ -16,3 +16,88 @@ services:
       retries: 10
       start_period: 30s
     restart: unless-stopped
+
+  # Fastjson version matrix (safe + autotype endpoints)
+  fj-1-2-30:
+    build:
+      context: ./fastjson-version-lab
+      dockerfile: Dockerfile
+      args:
+        FASTJSON_VERSION: "1.2.30"
+    image: fastjson-exp-toolkit/fastjson-version-lab:1.2.30
+    container_name: fj-1-2-30
+    ports:
+      - "18030:18080"
+    environment:
+      SERVER_PORT: "18080"
+      FASTJSON_LAB_VERSION: "1.2.30"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 25s
+    restart: unless-stopped
+
+  fj-1-2-47:
+    build:
+      context: ./fastjson-version-lab
+      dockerfile: Dockerfile
+      args:
+        FASTJSON_VERSION: "1.2.47"
+    image: fastjson-exp-toolkit/fastjson-version-lab:1.2.47
+    container_name: fj-1-2-47
+    ports:
+      - "18047:18080"
+    environment:
+      SERVER_PORT: "18080"
+      FASTJSON_LAB_VERSION: "1.2.47"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 25s
+    restart: unless-stopped
+
+  fj-1-2-68:
+    build:
+      context: ./fastjson-version-lab
+      dockerfile: Dockerfile
+      args:
+        FASTJSON_VERSION: "1.2.68"
+    image: fastjson-exp-toolkit/fastjson-version-lab:1.2.68
+    container_name: fj-1-2-68
+    ports:
+      - "18068:18080"
+    environment:
+      SERVER_PORT: "18080"
+      FASTJSON_LAB_VERSION: "1.2.68"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 25s
+    restart: unless-stopped
+
+  fj-1-2-80:
+    build:
+      context: ./fastjson-version-lab
+      dockerfile: Dockerfile
+      args:
+        FASTJSON_VERSION: "1.2.80"
+    image: fastjson-exp-toolkit/fastjson-version-lab:1.2.80
+    container_name: fj-1-2-80
+    ports:
+      - "18082:18080"
+    environment:
+      SERVER_PORT: "18080"
+      FASTJSON_LAB_VERSION: "1.2.80"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 25s
+    restart: unless-stopped

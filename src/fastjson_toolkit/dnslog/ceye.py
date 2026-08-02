@@ -75,15 +75,30 @@ class CeyeClient:
         if len(filter_text) > 20:
             filter_text = filter_text[:20]
         # API doc: type is 'dns' or 'request'
-        resp = self._client.get(
-            self.config.api_base,
-            params={
-                "token": self.config.token,
-                "type": record_type,
-                "filter": filter_text,
-            },
-        )
-        resp.raise_for_status()
+        last_exc: Exception | None = None
+        resp = None
+        for attempt in range(4):
+            try:
+                resp = self._client.get(
+                    self.config.api_base,
+                    params={
+                        "token": self.config.token,
+                        "type": record_type,
+                        "filter": filter_text,
+                    },
+                )
+                if resp.status_code in (502, 503, 504):
+                    last_exc = RuntimeError(f"CEYE HTTP {resp.status_code}")
+                    time.sleep(0.8 * (attempt + 1))
+                    continue
+                resp.raise_for_status()
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                time.sleep(0.8 * (attempt + 1))
+        else:
+            raise RuntimeError(f"CEYE query failed after retries: {last_exc}") from last_exc
+        assert resp is not None
         payload = resp.json()
         meta = payload.get("meta") or {}
         if meta.get("code") not in (200, "200", None):
@@ -107,12 +122,20 @@ class CeyeClient:
         *,
         timeout: float = 8.0,
         interval: float = 1.0,
+        min_count: int = 1,
+        settle: bool = False,
     ) -> list[CeyeRecord]:
+        """Poll CEYE DNS records.
+
+        - Default: return once ``min_count`` records appear.
+        - ``settle=True``: keep polling until timeout so late records (e.g. second
+          DNS of the 1.2.80/83 probe) can arrive before inference.
+        """
         deadline = time.time() + timeout
         last: list[CeyeRecord] = []
         while time.time() < deadline:
             last = self.query("dns", filter_text)
-            if last:
+            if last and len(last) >= min_count and not settle:
                 return last
             time.sleep(interval)
         return last

@@ -39,6 +39,8 @@ public class ParseController {
         body.put("endpoints", new String[]{
                 "/api/fastjson",
                 "/api/fastjson/autotype",
+                "/api/fastjson/silent",
+                "/api/fastjson/silent/autotype",
                 "/api/fastjson/person",
                 "/api/jackson",
                 "/api/jackson/person",
@@ -72,6 +74,32 @@ public class ParseController {
             return ResponseEntity.ok(JSON.toJSONString(obj));
         } catch (Exception e) {
             return error(e);
+        }
+    }
+
+    /**
+     * No exception echo — mimics production handlers that return opaque 500.
+     */
+    @PostMapping(value = "/fastjson/silent", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> fastjsonSilent(HttpServletRequest request) {
+        try {
+            Object obj = JSON.parse(readBody(request));
+            return ResponseEntity.ok(JSON.toJSONString(obj));
+        } catch (Exception e) {
+            return silentError();
+        }
+    }
+
+    @PostMapping(value = "/fastjson/silent/autotype", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> fastjsonSilentAutoType(HttpServletRequest request) {
+        try {
+            ParserConfig cfg = new ParserConfig();
+            cfg.setSafeMode(false);
+            cfg.setAutoTypeSupport(true);
+            Object obj = JSON.parse(readBody(request), cfg);
+            return ResponseEntity.ok(JSON.toJSONString(obj));
+        } catch (Exception e) {
+            return silentError();
         }
     }
 
@@ -146,5 +174,11 @@ public class ParseController {
         return ResponseEntity.badRequest()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(JSON.toJSONString(payload));
+    }
+
+    private ResponseEntity<String> silentError() {
+        return ResponseEntity.status(500)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"ok\":false}");
     }
 }

@@ -389,7 +389,7 @@ class FastjsonDetector:
             if dns_timing_suspicious:
                 parts.append("DNS 探针耗时明显增加")
             next_actions = [
-                "进入版本识别阶段（下一阶段）",
+                "打开版本识别页 /version，收敛版本区间",
                 "若 autoType 关闭，优先考虑 expect/其它绕过链",
                 "可对 /api/fastjson/autotype 类开启点复测 DNSLog",
             ]

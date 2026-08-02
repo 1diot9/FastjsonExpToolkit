@@ -2,7 +2,7 @@
 
 Fastjson 识别 / 版本探测 / PoC 工具箱。
 
-当前进度：**Phase 1 — Fastjson 识别**（Web + CLI + Docker 靶场）。后续阶段见 [`docs/design.md`](docs/design.md)。
+当前进度：**Phase 2 — 识别 + 版本探测**（Web + API + Docker 靶场）。后续阶段见 [`docs/design.md`](docs/design.md)。
 
 > 仅用于授权测试与本地靶场复现。
 
@@ -11,11 +11,13 @@ Fastjson 识别 / 版本探测 / PoC 工具箱。
 | 能力 | 状态 | 说明 |
 |------|------|------|
 | Fastjson 识别 | ✅ | 报错 / 解析特征 / `$ref` / DNS·CEYE / 与其他 JSON 库区分 |
+| Fastjson 版本探测 | ✅ | AutoType / AutoCloseable 回显 / 不出网二分 / DNSLog |
+| 依赖 / classpath 探测 | ✅ | Character 报错回显（推荐）/ DNS Locale（版本敏感） |
 | Web 识别页 | ✅ | `/detect`，对接真实 API |
+| Web 版本页 | ✅ | `/version`，对接 `/api/version` |
+| Web 依赖页 | ✅ | `/deps`，对接 `/api/deps` |
 | Web 设置页 | ✅ | `/settings`，配置 CEYE Token 与 Identifier |
-| CLI | ✅ | `fjtoolkit detect` / `serve` / `ceye-check` / `probes` |
 | Docker 靶场 | ✅ | 多解析器对照（Fastjson / Jackson / Gson / Hutool / org.json） |
-| 版本识别 | ⏳ | 规划中 |
 | 各版本 PoC / 自定义字节码 | ⏳ | 规划中 |
 | 回显 / 内存马 | ⏳ | 规划中（内存马参考 [MemShellParty](https://github.com/ReaJason/MemShellParty)） |
 
@@ -65,6 +67,8 @@ chmod +x scripts/start.sh scripts/stop.sh
 |------|------|
 | 前端 | http://127.0.0.1:3000 |
 | 识别页 | http://127.0.0.1:3000/detect |
+| 版本页 | http://127.0.0.1:3000/version |
+| 依赖页 | http://127.0.0.1:3000/deps |
 | 设置页 | http://127.0.0.1:3000/settings |
 | 后端 API | http://127.0.0.1:8000 |
 | API 文档（Scalar） | http://127.0.0.1:8000/api/docs 或经前端代理 `/api/docs` |
@@ -77,8 +81,8 @@ chmod +x scripts/start.sh scripts/stop.sh
 手动启动：
 
 ```bash
-# 默认 --reload；生产可加 --no-reload
-fjtoolkit serve --host 127.0.0.1 --port 8000
+# 默认 --reload；生产可去掉 --reload
+python -m uvicorn fastjson_toolkit.api.app:app --host 127.0.0.1 --port 8000 --reload
 cd web && npm run dev
 ```
 
@@ -98,13 +102,7 @@ CEYE_TOKEN=your_ceye_api_token
 CEYE_DOMAIN=hpdth2.ceye.io
 ```
 
-验证：
-
-```bash
-fjtoolkit ceye-check --trigger
-```
-
-设置页也可点「测试连接」。
+验证：在设置页点「测试连接」，或调用 `POST /api/settings/ceye-test`。
 
 ### 4. （可选）启动 Docker 靶场
 
@@ -121,7 +119,7 @@ cd lab
 docker compose down
 ```
 
-靶场端口：`18080`
+指纹靶场端口：`18080`
 
 | 端点 | 解析器 |
 |------|--------|
@@ -134,24 +132,16 @@ docker compose down
 | `POST /api/orgjson` | org.json |
 | `POST /api/hutool` | Hutool JSON |
 
-## CLI 用法
+版本矩阵（`lab/fastjson-version-lab`，`docker compose up -d fj-1-2-30 ...`）：
 
-```bash
-# 识别（默认启用 CEYE；autoType 关闭时通常无 DNS 记录）
-fjtoolkit detect http://127.0.0.1:18080/api/fastjson --json
-fjtoolkit detect http://127.0.0.1:18080/api/fastjson/autotype --json
-fjtoolkit detect http://127.0.0.1:18080/api/jackson --json --no-dns
+| 端口 | Fastjson |
+|------|----------|
+| `18030` | 1.2.30 |
+| `18047` | 1.2.47 |
+| `18068` | 1.2.68 |
+| `18082` | 1.2.80 |
 
-# 列出探针
-fjtoolkit probes --dnslog xxx.hpdth2.ceye.io
-
-# 启动 API（默认热重载；关闭：--no-reload）
-fjtoolkit serve --host 127.0.0.1 --port 8000
-```
-
-常用选项：`--no-dns` / `--no-ceye` / `--ceye-token` / `--ceye-domain` / `--ceye-wait` / `--timeout`。
-
-退出码：判定为 Fastjson 时为 `0`，否则 `1`。
+每个版本均提供 `POST /api/fastjson` 与 `POST /api/fastjson/autotype`。
 
 ## HTTP API
 
@@ -162,11 +152,19 @@ fjtoolkit serve --host 127.0.0.1 --port 8000
 | `GET` | `/api/health` | 健康检查与 CEYE 配置状态 |
 | `GET` | `/api/probes` | 探针列表 |
 | `POST` | `/api/detect` | Fastjson 识别 |
+| `GET` | `/api/version/probes` | 版本探针列表 |
+| `POST` | `/api/version` | Fastjson 版本探测 |
+| `GET` | `/api/deps/catalog` | 内置依赖探测类目录 |
+| `POST` | `/api/deps` | 依赖 / classpath 探测 |
 | `GET` | `/api/settings` | 读取 CEYE 设置（Token 脱敏） |
 | `PUT` | `/api/settings` | 保存 CEYE Token / Identifier → `.env` |
 | `POST` | `/api/settings/ceye-test` | 测试 CEYE API |
 
-`POST /api/detect` 返回结构化 `DetectResult`：`is_fastjson` / `confidence` / `primary_guess` / `scores` / `evidence` / `dns_confirmed` / `next_actions` 等，便于 Web 与 Agent 消费。
+`POST /api/detect` 返回结构化 `DetectResult`：`is_fastjson` / `confidence` / `primary_guess` / `scores` / `evidence` / `dns_confirmed` / `next_actions` 等。
+
+`POST /api/version` 返回 `VersionResult`：`version_range` / `reported_version` / `autotype_enabled` / `is_1_2_83_hint` / `evidence` / `dns_hits` 等。
+
+`POST /api/deps` 返回 `DepsResult`：`present` / `results` / `method`（`character`|`dns`）/ `notes` 等。推荐 `method=character`（报错回显）；DNS Locale 链版本敏感，本地常无记录。
 
 ## Web 前端
 
@@ -192,12 +190,27 @@ $env:NODE_USE_ENV_PROXY='1'
 
 判定策略：依赖强特征命中，差异探针不单独定论。靶场验证结论：Fastjson → `is_fastjson=true`；Jackson / Gson / Hutool / org.json → `false`。
 
+## 依赖探测原理（摘要）
+
+1. **Character 报错（推荐）**：畸形 `@type:java.lang.Character` + `java.lang.Class`；类存在时响应含 `can not cast to char`，不存在常见 `No message available`
+2. **DNS Locale（实验）**：`Locale` 加载目标类成功后才构造完整对象并触发 `Inet4Address` DNS；对版本 / autoType 极敏感，本地靶场经常无记录
+
+CLI：`fjtoolkit deps http://127.0.0.1:18080/api/fastjson`
+
+## 版本探测原理（摘要）
+
+1. **AutoType**：`java.lang.Class` vs `Random.String` 报错组合判断是否开启  
+2. **AutoCloseable 回显**：残缺 `{"@type":"java.lang.AutoCloseable"`，提取 `fastjson-version`（注意 1.2.76+ 可能写死）  
+3. **1.2.83**：`Test.TestException` 仅在 1.2.83 通常不报错  
+4. **不出网二分**：Exception / AutoCloseable / Class+Jdbc / Jdbc 四探针收敛区间  
+5. **DNSLog**：<=1.2.47 / <=1.2.68 / 单 DNS≈1.2.80 / 双 DNS≈1.2.83
+
 ## 目录结构
 
 ```
 ├── scripts/start.* / stop.*  # 一键启停 Web（默认后端 --reload，不含靶场）
 ├── docs/design.md            # 设计与阶段规划
-├── src/fastjson_toolkit/     # Python 后端（detect / api / cli / dnslog）
+├── src/fastjson_toolkit/     # Python 后端（detect / version / api / dnslog）
 ├── web/                      # Next.js + shadcn 前端
 ├── lab/                      # Docker 指纹靶场
 ├── tests/                    # 单元测试

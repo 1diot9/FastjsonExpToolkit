@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen, ScanSearch, Settings } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Fingerprint,
+  PackageSearch,
+  ScanSearch,
+  Settings,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -16,13 +23,13 @@ export default function Home() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 px-6 py-16">
       <div className="space-y-3">
-        <Badge variant="secondary">Phase 1</Badge>
+        <Badge variant="secondary">Phase 2</Badge>
         <h1 className="text-3xl font-semibold tracking-tight">
           FastjsonExpToolkit
         </h1>
         <p className="max-w-xl text-muted-foreground">
-          Fastjson 识别 / 版本探测 / PoC 工具箱。当前已打通识别能力的 Web
-          前后端；UI 基于{" "}
+          Fastjson 识别 / 版本 / 依赖探测 / PoC 工具箱。当前已打通识别、版本与依赖
+          Web 前后端；UI 基于{" "}
           <a
             className="underline underline-offset-4"
             href="https://ui.shadcn.com/"
@@ -49,6 +56,42 @@ export default function Home() {
           <CardContent>
             <Link href="/detect" className={cn(buttonVariants())}>
               打开识别页
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Fingerprint className="size-5" />
+              版本探测
+            </CardTitle>
+            <CardDescription>
+              对接 <code>/api/version</code>，收敛版本区间与 AutoType 状态。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/version" className={cn(buttonVariants())}>
+              打开版本页
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PackageSearch className="size-5" />
+              依赖探测
+            </CardTitle>
+            <CardDescription>
+              对接 <code>/api/deps</code>，Character 报错 / DNS 探测 classpath。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/deps" className={cn(buttonVariants())}>
+              打开依赖页
               <ArrowRight className="size-4" data-icon="inline-end" />
             </Link>
           </CardContent>

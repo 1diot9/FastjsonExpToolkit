@@ -23,6 +23,48 @@ class DetectRequest(BaseModel):
     content_type: str = "application/json"
 
 
+class VersionRequest(BaseModel):
+    target: str = Field(..., description="目标 URL")
+    include_dns: bool = Field(False, description="是否发送 DNS 版本探针")
+    use_ceye: bool = Field(True, description="是否使用 CEYE 轮询确认 DNS")
+    dnslog: Optional[str] = Field(None, description="自定义 DNSLog 域名（无 CEYE 时）")
+    ceye_token: Optional[str] = Field(None, description="覆盖 .env 中的 CEYE token")
+    ceye_domain: Optional[str] = Field(None, description="覆盖 CEYE 域名")
+    ceye_wait: float = Field(10.0, ge=0, le=60, description="CEYE 轮询等待秒数")
+    timeout: float = Field(10.0, ge=1, le=120)
+    headers: dict[str, str] = Field(default_factory=dict)
+    proxy: Optional[str] = None
+    insecure: bool = False
+    content_type: str = "application/json"
+
+
+class DepsRequest(BaseModel):
+    target: str = Field(..., description="目标 URL")
+    method: str = Field(
+        "character",
+        description="探测方法：character（报错回显，推荐）或 dns（Locale+Inet4，版本敏感）",
+    )
+    classes: list[str] = Field(
+        default_factory=list,
+        description="仅扫描这些全限定类名；空则用内置目录",
+    )
+    categories: list[str] = Field(
+        default_factory=list,
+        description="按类别过滤，如 spring / c3p0 / jdk；空则不过滤",
+    )
+    use_ceye: bool = Field(True, description="DNS 方法时是否用 CEYE 轮询确认")
+    dnslog: Optional[str] = Field(None, description="自定义 DNSLog 域名（无 CEYE 时）")
+    ceye_token: Optional[str] = Field(None, description="覆盖 .env 中的 CEYE token")
+    ceye_domain: Optional[str] = Field(None, description="覆盖 CEYE 域名")
+    ceye_wait: float = Field(10.0, ge=0, le=60, description="CEYE 轮询等待秒数")
+    timeout: float = Field(10.0, ge=1, le=120)
+    concurrency: int = Field(6, ge=1, le=20, description="Character 方法并发数")
+    headers: dict[str, str] = Field(default_factory=dict)
+    proxy: Optional[str] = None
+    insecure: bool = False
+    content_type: str = "application/json"
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str

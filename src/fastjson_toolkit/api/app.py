@@ -10,11 +10,13 @@ from scalar_fastapi import Theme, get_scalar_api_reference
 
 from fastjson_toolkit import __version__
 from fastjson_toolkit.api.schemas import (
+    DepsRequest,
     DetectRequest,
     HealthResponse,
     SettingsResponse,
     SettingsUpdateRequest,
     SettingsUpdateResponse,
+    VersionRequest,
 )
 from fastjson_toolkit.config import (
     load_dotenv,
@@ -23,12 +25,14 @@ from fastjson_toolkit.config import (
     resolve_dotenv_path,
     update_dotenv,
 )
+from fastjson_toolkit.deps import DepsResult, FastjsonDepsDetector, default_catalog
 from fastjson_toolkit.detect import DetectResult, FastjsonDetector
 from fastjson_toolkit.detect.probes import all_probes
 from fastjson_toolkit.dnslog import CeyeClient, CeyeConfig
+from fastjson_toolkit.version import FastjsonVersionDetector, VersionResult, all_version_probes
 
 API_DESCRIPTION = """
-FastjsonExpToolkit 后端 API：识别、设置与探针编排。
+FastjsonExpToolkit 后端 API：识别、版本探测、依赖探测、设置与探针编排。
 
 ## 文档入口
 
@@ -233,6 +237,137 @@ def create_app() -> FastAPI:
             return detector.detect(target, include_dns=req.include_dns)
         except Exception as exc:  # noqa: BLE001 — surface to client
             raise HTTPException(status_code=502, detail=f"探测失败: {exc}") from exc
+        finally:
+            detector.close()
+
+    @app.get(
+        "/api/version/probes",
+        tags=["version"],
+        summary="列出版本探针",
+    )
+    def list_version_probes(dnslog: str | None = None) -> list[dict[str, Any]]:
+        hosts = None
+        if dnslog:
+            from fastjson_toolkit.version.probes import validate_dns_host
+
+            try:
+                base = validate_dns_host(dnslog)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            hosts = {
+                "le47": f"le47.{base}",
+                "le68": f"le68.{base}",
+                "d80a": f"d80a.{base}",
+                "d80b": f"d80b.{base}",
+            }
+        return [
+            {
+                "id": p.id,
+                "category": p.category,
+                "description": p.description,
+                "dns_related": p.dns_related,
+                "dns_tags": list(p.dns_tags),
+                "payload": p.payload,
+            }
+            for p in all_version_probes(hosts)
+        ]
+
+    @app.post(
+        "/api/version",
+        response_model=VersionResult,
+        tags=["version"],
+        summary="Fastjson 版本探测",
+    )
+    def version_detect(req: VersionRequest) -> VersionResult:
+        target = req.target.strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="target 不能为空")
+
+        ceye_cfg = None
+        if req.include_dns and req.use_ceye:
+            env_cfg = CeyeConfig.from_env()
+            token = req.ceye_token or (env_cfg.token if env_cfg else None)
+            domain = req.ceye_domain or (env_cfg.domain if env_cfg else "hpdth2.ceye.io")
+            if token:
+                ceye_cfg = CeyeConfig(token=token, domain=domain)
+
+        detector = FastjsonVersionDetector(
+            timeout=req.timeout,
+            headers=req.headers or None,
+            proxy=req.proxy,
+            verify_tls=not req.insecure,
+            dnslog_host=req.dnslog,
+            ceye=ceye_cfg,
+            ceye_wait=req.ceye_wait,
+            content_type=req.content_type,
+        )
+        try:
+            return detector.detect(target, include_dns=req.include_dns)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"版本探测失败: {exc}") from exc
+        finally:
+            detector.close()
+
+    @app.get(
+        "/api/deps/catalog",
+        tags=["deps"],
+        summary="列出内置依赖探测类目录",
+    )
+    def list_deps_catalog() -> list[dict[str, Any]]:
+        return [
+            {
+                "class": e.clazz,
+                "description": e.description,
+                "category": e.category,
+            }
+            for e in default_catalog()
+        ]
+
+    @app.post(
+        "/api/deps",
+        response_model=DepsResult,
+        tags=["deps"],
+        summary="Fastjson 依赖探测",
+    )
+    def deps_detect(req: DepsRequest) -> DepsResult:
+        target = req.target.strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="target 不能为空")
+
+        method = (req.method or "character").strip().lower()
+        if method not in ("character", "dns"):
+            raise HTTPException(
+                status_code=400, detail="method 仅支持 character 或 dns"
+            )
+
+        ceye_cfg = None
+        if method == "dns" and req.use_ceye:
+            env_cfg = CeyeConfig.from_env()
+            token = req.ceye_token or (env_cfg.token if env_cfg else None)
+            domain = req.ceye_domain or (env_cfg.domain if env_cfg else "hpdth2.ceye.io")
+            if token:
+                ceye_cfg = CeyeConfig(token=token, domain=domain)
+
+        detector = FastjsonDepsDetector(
+            timeout=req.timeout,
+            headers=req.headers or None,
+            proxy=req.proxy,
+            verify_tls=not req.insecure,
+            dnslog_host=req.dnslog,
+            ceye=ceye_cfg,
+            ceye_wait=req.ceye_wait,
+            content_type=req.content_type,
+            concurrency=req.concurrency,
+        )
+        try:
+            return detector.scan(
+                target,
+                method=method,
+                classes=req.classes or None,
+                categories=req.categories or None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"依赖探测失败: {exc}") from exc
         finally:
             detector.close()
 

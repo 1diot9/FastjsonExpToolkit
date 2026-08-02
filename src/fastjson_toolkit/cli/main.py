@@ -201,6 +201,97 @@ def probes_cmd(
     typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+@app.command("deps")
+def deps_cmd(
+    target: str = typer.Argument(..., help="目标 URL"),
+    method: str = typer.Option(
+        "character",
+        "--method",
+        help="character（报错回显，推荐）或 dns（Locale+Inet4）",
+    ),
+    category: Optional[list[str]] = typer.Option(
+        None, "--category", "-c", help="按类别过滤，可重复"
+    ),
+    clazz: Optional[list[str]] = typer.Option(
+        None, "--class", help="仅扫描指定全限定类名，可重复"
+    ),
+    dnslog: Optional[str] = typer.Option(None, "--dnslog", help="自定义 DNSLog 域名"),
+    ceye_token: Optional[str] = typer.Option(None, "--ceye-token"),
+    ceye_domain: Optional[str] = typer.Option(None, "--ceye-domain"),
+    ceye_wait: float = typer.Option(10.0, "--ceye-wait"),
+    no_ceye: bool = typer.Option(False, "--no-ceye"),
+    timeout: float = typer.Option(10.0, "--timeout"),
+    concurrency: int = typer.Option(6, "--concurrency"),
+    header: Optional[list[str]] = typer.Option(None, "--header", "-H"),
+    proxy: Optional[str] = typer.Option(None, "--proxy"),
+    insecure: bool = typer.Option(False, "--insecure"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """依赖 / classpath 探测（Character 报错或 DNS Locale）。"""
+    from fastjson_toolkit.deps import FastjsonDepsDetector
+
+    load_dotenv()
+    headers = _parse_headers(header)
+    method_norm = method.strip().lower()
+    if method_norm not in ("character", "dns"):
+        raise typer.BadParameter("method 仅支持 character 或 dns")
+
+    ceye_cfg = None
+    if method_norm == "dns" and not no_ceye:
+        env_cfg = CeyeConfig.from_env()
+        token = ceye_token or (env_cfg.token if env_cfg else None)
+        domain = ceye_domain or (env_cfg.domain if env_cfg else "hpdth2.ceye.io")
+        if token:
+            ceye_cfg = CeyeConfig(token=token, domain=domain)
+
+    detector = FastjsonDepsDetector(
+        timeout=timeout,
+        headers=headers or None,
+        proxy=proxy,
+        verify_tls=not insecure,
+        dnslog_host=dnslog,
+        ceye=ceye_cfg,
+        ceye_wait=ceye_wait,
+        concurrency=concurrency,
+    )
+    try:
+        result = detector.scan(
+            target,
+            method=method_norm,
+            classes=clazz or None,
+            categories=category or None,
+        )
+    finally:
+        detector.close()
+
+    if json_out:
+        typer.echo(result.model_dump_json(indent=2))
+        raise typer.Exit(0 if result.present_count else 1)
+
+    color = "green" if result.present_count else "yellow"
+    rprint(Panel(result.summary, title="依赖探测结果", border_style=color))
+    for note in result.notes:
+        rprint(f"[dim]{note}[/dim]")
+
+    table = Table(title="命中依赖")
+    table.add_column("Description")
+    table.add_column("Class")
+    table.add_column("Category")
+    for hit in result.present:
+        table.add_row(hit.description, hit.clazz, hit.category)
+    if result.present:
+        rprint(table)
+    else:
+        rprint("[yellow]未发现命中依赖[/yellow]")
+
+    if result.next_actions:
+        rprint("[bold]下一步建议[/bold]")
+        for i, action in enumerate(result.next_actions, 1):
+            rprint(f"  {i}. {action}")
+
+    raise typer.Exit(0 if result.present_count else 1)
+
+
 @app.command("serve")
 def serve_cmd(
     host: str = typer.Option("127.0.0.1", "--host"),
