@@ -1,7 +1,7 @@
 ---
 title: Fastjson 探测分析
 description: 识别 Fastjson、区分其他 JSON 库、版本与依赖探测的方法总结
-order: 1
+order: 4
 ---
 
 # Fastjson 探测分析
@@ -12,6 +12,10 @@ order: 1
 
 - [版本探测思路](https://mp.weixin.qq.com/s/jbkN86qq9JxkGNOhwv9nxA)
 - [期望类判断](https://mp.weixin.qq.com/s/7c_zi5Pv4a69IV0zzJo5Ww)
+- [≤1.2.68 利用技巧](/docs/fastjson-1.2.68)
+- [≤1.2.80 利用技巧](/docs/fastjson-1.2.80)
+- [≤1.2.47 利用技巧](/docs/fastjson-1.2.47)
+- [Getter 触发技巧](/docs/getter-trigger)
 
 ---
 
@@ -385,6 +389,8 @@ if __name__ == "__main__":
 可结合 Feature `@type` 与空键等语法，判断服务端是否按期望类反序列化。详见：
 
 - [判断是否存在期望类](https://mp.weixin.qq.com/s/7c_zi5Pv4a69IV0zzJo5Ww)
+
+有期望类时，仅靠 `$ref` 往往不足以触发 getter，需套 `java.util.Currency` 等手法，见 [Getter 触发技巧](/docs/getter-trigger)。
 
 本工具探测页已将「识别 → 版本 → 期望类」按序编排。
 
