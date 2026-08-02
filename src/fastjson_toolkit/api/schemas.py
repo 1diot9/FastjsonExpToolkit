@@ -237,6 +237,16 @@ class Poc1268Request(BaseModel):
     content_type: str = "application/json"
 
 
+class LabStartRequest(BaseModel):
+    build: bool = Field(True, description="启动时是否 docker compose --build")
+    timeout: float = Field(600.0, ge=30, le=1800, description="compose 超时秒数")
+
+
+class LabStopRequest(BaseModel):
+    remove: bool = Field(True, description="停止后是否移除容器（down / rm）")
+    timeout: float = Field(180.0, ge=10, le=600, description="compose 超时秒数")
+
+
 class Poc1280Request(BaseModel):
     gadget: str = Field(
         "io_write",

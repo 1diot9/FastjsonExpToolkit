@@ -14,6 +14,8 @@ from fastjson_toolkit.api.schemas import (
     DetectRequest,
     ExpectClassRequest,
     HealthResponse,
+    LabStartRequest,
+    LabStopRequest,
     Poc1247Request,
     Poc1268Request,
     Poc1280Request,
@@ -60,6 +62,7 @@ from fastjson_toolkit.poc.v1_2_47 import get_gadget as get_poc_1247_gadget
 from fastjson_toolkit.poc.v1_2_68 import get_gadget as get_poc_1268_gadget
 from fastjson_toolkit.poc.v1_2_80 import get_gadget as get_poc_1280_gadget
 from fastjson_toolkit.version import FastjsonVersionDetector, VersionResult, all_version_probes
+from fastjson_toolkit.lab import docker_status, list_lab_status, start_lab, stop_lab
 from fastjson_toolkit.waf import (
     WafRequest,
     WafResult,
@@ -69,7 +72,7 @@ from fastjson_toolkit.waf import (
 )
 
 API_DESCRIPTION = """
-FastjsonExpToolkit 后端 API：识别、版本探测、期望类探测、依赖探测、PoC、WAF 绕过、设置与探针编排。
+FastjsonExpToolkit 后端 API：识别、版本探测、期望类探测、依赖探测、PoC、WAF 绕过、Docker 靶场、设置与探针编排。
 
 ## 文档入口
 
@@ -647,6 +650,89 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=f"WAF 变换失败: {exc}") from exc
+
+    @app.get(
+        "/api/lab/docker",
+        tags=["lab"],
+        summary="Docker 环境识别",
+        description="检测 docker / daemon / compose 是否可用。",
+    )
+    def lab_docker() -> dict[str, Any]:
+        env = docker_status()
+        return {
+            "ready": env.ready,
+            "docker_installed": env.docker_installed,
+            "docker_running": env.docker_running,
+            "compose_available": env.compose_available,
+            "compose_backend": env.compose_backend,
+            "docker_version": env.docker_version,
+            "compose_version": env.compose_version,
+            "engine_info": env.engine_info,
+            "errors": env.errors,
+        }
+
+    @app.get(
+        "/api/lab",
+        tags=["lab"],
+        summary="列出靶场状态",
+        description="含端口占用检测与容器运行状态，便于按需启动。",
+    )
+    def lab_list() -> dict[str, Any]:
+        env = docker_status()
+        labs = [s.to_dict() for s in list_lab_status(env=env)]
+        return {
+            "docker": {
+                "ready": env.ready,
+                "docker_installed": env.docker_installed,
+                "docker_running": env.docker_running,
+                "compose_available": env.compose_available,
+                "compose_backend": env.compose_backend,
+                "docker_version": env.docker_version,
+                "compose_version": env.compose_version,
+                "engine_info": env.engine_info,
+                "errors": env.errors,
+            },
+            "labs": labs,
+        }
+
+    @app.post(
+        "/api/lab/{lab_id}/start",
+        tags=["lab"],
+        summary="启动靶场",
+        description="启动前校验 Docker 环境与端口占用；冲突则拒绝启动。",
+    )
+    def lab_start(
+        lab_id: str,
+        req: LabStartRequest = LabStartRequest(),
+    ) -> dict[str, Any]:
+        result = start_lab(lab_id, build=req.build, timeout=req.timeout)
+        if not result.ok and result.message.startswith("未知靶场"):
+            raise HTTPException(status_code=404, detail=result.message)
+        if not result.ok:
+            detail = result.message
+            if result.logs:
+                detail = detail + " | " + " | ".join(result.logs[-8:])
+            raise HTTPException(status_code=409, detail=detail)
+        return result.to_dict()
+
+    @app.post(
+        "/api/lab/{lab_id}/stop",
+        tags=["lab"],
+        summary="停止靶场",
+    )
+    def lab_stop(
+        lab_id: str,
+        req: LabStopRequest = LabStopRequest(),
+    ) -> dict[str, Any]:
+        result = stop_lab(lab_id, remove=req.remove, timeout=req.timeout)
+        if not result.ok and result.message.startswith("未知靶场"):
+            raise HTTPException(status_code=404, detail=result.message)
+        if not result.ok:
+            detail = result.message
+            if result.logs:
+                detail = detail + " | " + " | ".join(result.logs[-8:])
+            raise HTTPException(status_code=409, detail=detail)
+        return result.to_dict()
 
     @app.post(
         "/api/poc/cve-2026-16723",

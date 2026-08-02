@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BookOpen,
   Bomb,
+  Container,
   PackageSearch,
   ScanSearch,
   Settings,
@@ -113,6 +114,25 @@ export default function Home() {
           <CardContent>
             <Link href="/waf" className={cn(buttonVariants())}>
               打开 WAF 页
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Container className="size-5" />
+              Docker 靶场
+            </CardTitle>
+            <CardDescription>
+              识别 Docker 环境与端口占用，按需启动{" "}
+              <code>lab/</code> 下复现环境。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/lab" className={cn(buttonVariants())}>
+              打开靶场页
               <ArrowRight className="size-4" data-icon="inline-end" />
             </Link>
           </CardContent>

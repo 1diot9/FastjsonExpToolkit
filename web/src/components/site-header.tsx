@@ -12,6 +12,7 @@ const links = [
   { href: "/deps", label: "依赖" },
   { href: "/poc", label: "PoC" },
   { href: "/waf", label: "WAF" },
+  { href: "/lab", label: "靶场" },
   { href: "/settings", label: "设置" },
 ];
 

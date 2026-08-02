@@ -600,3 +600,99 @@ export async function runWaf(body: WafRequest): Promise<WafResult> {
   if (!res.ok) throw new Error(await readError(res));
   return res.json();
 }
+
+export type DockerEnvironment = {
+  ready: boolean;
+  docker_installed: boolean;
+  docker_running: boolean;
+  compose_available: boolean;
+  compose_backend: string | null;
+  docker_version: string | null;
+  compose_version: string | null;
+  engine_info: string | null;
+  errors: string[];
+};
+
+export type PortCheck = {
+  port: number;
+  host: string;
+  occupied: boolean;
+  owned_by_lab: boolean;
+  detail: string;
+};
+
+export type LabState = "running" | "partial" | "stopped" | "unknown";
+
+export type LabStatus = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  compose_rel: string;
+  services: string[];
+  ports: number[];
+  container_names: string[];
+  endpoints: string[];
+  notes: string;
+  state: LabState;
+  containers_running: Record<string, boolean | null>;
+  port_checks: PortCheck[];
+  can_start: boolean;
+  can_stop: boolean;
+  blockers: string[];
+};
+
+export type LabListResponse = {
+  docker: DockerEnvironment;
+  labs: LabStatus[];
+};
+
+export type LabActionResult = {
+  ok: boolean;
+  lab_id: string;
+  action: string;
+  message: string;
+  state: LabState | null;
+  logs: string[];
+  port_checks: PortCheck[];
+  docker: DockerEnvironment | null;
+  status: LabStatus | null;
+};
+
+export async function fetchLabDocker(): Promise<DockerEnvironment> {
+  const res = await apiFetch("/api/lab/docker");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function fetchLabs(): Promise<LabListResponse> {
+  const res = await apiFetch("/api/lab");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function startLab(
+  labId: string,
+  body?: { build?: boolean; timeout?: number },
+): Promise<LabActionResult> {
+  const res = await apiFetch(`/api/lab/${encodeURIComponent(labId)}/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? { build: true }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function stopLab(
+  labId: string,
+  body?: { remove?: boolean; timeout?: number },
+): Promise<LabActionResult> {
+  const res = await apiFetch(`/api/lab/${encodeURIComponent(labId)}/stop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? { remove: true }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
