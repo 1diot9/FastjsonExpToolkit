@@ -16,7 +16,7 @@ from fastjson_toolkit.poc.v1_2_80.payloads import build_steps
 ROOT = Path(__file__).resolve().parents[1]
 LAB = ROOT / "lab" / "fastjson-1280-lab"
 PROOF = ROOT / "tmp_lab" / "1280_proof"
-BASE = "http://127.0.0.1:18180"
+BASE = "http://127.0.0.1:18280"
 
 
 def wait_health(seconds: int = 240) -> dict:

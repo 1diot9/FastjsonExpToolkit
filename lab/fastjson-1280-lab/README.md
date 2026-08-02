@@ -7,7 +7,7 @@ Exception expectClass + `ParserConfig.getDeserializer` 缓存绕过证明靶场�
 
 ```bash
 docker compose up --build -d
-curl http://127.0.0.1:18180/api/health
+curl http://127.0.0.1:18280/api/health
 ```
 
 ## 端点

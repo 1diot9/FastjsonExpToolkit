@@ -92,10 +92,10 @@ Backend (Python FastAPI)
 |------|------|------|
 | `lab/json-fingerprint-lab`（compose 根） | `18080` | 多解析器对照 + `/api/fastjson/autotype` |
 | `lab/fastjson-version-lab` | `18030` / `18047` / `18068` / `18082` | 版本矩阵（1.2.30 / 47 / 68 / 80） |
-| `lab/fastjson-1247-lab` | `18147` | ≤1.2.47 全依赖（JDK8u242） |
-| `lab/fastjson-1268-lab` | `18168` | ≤1.2.68 AutoCloseable 依赖（JDK11） |
-| `lab/fastjson-1280-lab` | `18180` | ≤1.2.80 Exception 缓存依赖（JDK11，共享 ParserConfig） |
-| `lab/cve-2026-16723` | `18083`（JDWP `15005`） | 1.2.83 Undertow fat jar |
+| `lab/fastjson-1247-lab` | `18247` | ≤1.2.47 全依赖（JDK8u242） |
+| `lab/fastjson-1268-lab` | `18268` | ≤1.2.68 AutoCloseable 依赖（JDK11） |
+| `lab/fastjson-1280-lab` | `18280` | ≤1.2.80 Exception 缓存依赖（JDK11，共享 ParserConfig） |
+| `lab/cve-2026-16723` | `18083`（JDWP `18505`） | 1.2.83 Undertow fat jar |
 
 ### 3.5 未完成（相对最终目标）
 
@@ -122,13 +122,13 @@ Backend (Python FastAPI)
 - ✅ CVE-2026-16723（1.2.83）：jar:http / fd-cache 证明 PoC + Undertow 靶场 + Web `/poc`
 - ✅ ≤1.2.47 Class 缓存绕过：JdbcRowSet / BCEL(dbcp×4) / C3P0 / MyBatis / H2
   - 模块：`src/fastjson_toolkit/poc/v1_2_47/`；API：`GET/POST /api/poc/1.2.47`；CLI：`fjtoolkit poc-1247`
-  - Web `/poc` Tab「≤1.2.47」；靶场：`lab/fastjson-1247-lab`（`:18147`）
+  - Web `/poc` Tab「≤1.2.47」；靶场：`lab/fastjson-1247-lab`（`:18247`）
 - ✅ ≤1.2.68 AutoCloseable expectClass：JDK 写/截断、commons-io（io1–io5/ioFinal/读）、MySQL/PG
   - 模块：`src/fastjson_toolkit/poc/v1_2_68/`；API：`GET/POST /api/poc/1.2.68`；CLI：`fjtoolkit poc-1268`
-  - Web `/poc` Tab「≤1.2.68」；靶场：`lab/fastjson-1268-lab`（`:18168`）
+  - Web `/poc` Tab「≤1.2.68」；靶场：`lab/fastjson-1268-lab`（`:18268`）
 - ✅ ≤1.2.80 Exception expectClass + 反序列化器缓存：jackson→InputStream、commons-io 读写、PG/MySQL、groovy、aspectj、jython
   - 模块：`src/fastjson_toolkit/poc/v1_2_80/`；API：`GET/POST /api/poc/1.2.80`；CLI：`fjtoolkit poc-1280`
-  - Web `/poc` Tab「≤1.2.80」；靶场：`lab/fastjson-1280-lab`（`:18180`）
+  - Web `/poc` Tab「≤1.2.80」；靶场：`lab/fastjson-1280-lab`（`:18280`）
 - ✅ WAF 本地变换 + PoC 叠加（CLI `--waf` / API `waf_techniques` / Web `/waf` 与 PoC 页勾选）
 - ✅ Getter 触发封装（期望类场景）
 - ⏳ 通用自定义字节码上传 UI；少见组合链补齐

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -14,11 +15,21 @@ from fastjson_toolkit.lab.docker_env import (
     PortCheck,
     check_ports,
     compose_argv,
+    container_published_ports,
     container_running,
     detect_docker_environment,
 )
 
 LabState = Literal["running", "partial", "stopped", "unknown"]
+
+
+@dataclass
+class LabPortInfo:
+    key: str
+    label: str
+    default: int
+    value: int
+    editable: bool = True
 
 
 @dataclass
@@ -30,6 +41,8 @@ class LabStatus:
     compose_rel: str
     services: list[str]
     ports: list[int]
+    default_ports: list[int]
+    port_infos: list[LabPortInfo]
     container_names: list[str]
     endpoints: list[str]
     notes: str
@@ -39,10 +52,10 @@ class LabStatus:
     can_start: bool
     can_stop: bool
     blockers: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        return data
+        return asdict(self)
 
 
 @dataclass
@@ -56,6 +69,7 @@ class LabActionResult:
     port_checks: list[PortCheck] = field(default_factory=list)
     docker: DockerEnvironment | None = None
     status: LabStatus | None = None
+    ports: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -68,6 +82,7 @@ class LabActionResult:
             "port_checks": [asdict(p) for p in self.port_checks],
             "docker": asdict(self.docker) if self.docker else None,
             "status": self.status.to_dict() if self.status else None,
+            "ports": self.ports,
         }
 
 
@@ -88,6 +103,7 @@ def _run_compose(
     *,
     env: DockerEnvironment,
     timeout: float = 600.0,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[int, list[str]]:
     cwd = _compose_dir(lab)
     if not cwd.is_dir():
@@ -97,6 +113,9 @@ def _run_compose(
         raise FileNotFoundError(f"缺少 docker-compose.yml: {compose_file}")
 
     cmd = [*compose_argv(env), *args]
+    run_env = os.environ.copy()
+    if extra_env:
+        run_env.update(extra_env)
     try:
         proc = subprocess.run(
             cmd,
@@ -107,6 +126,7 @@ def _run_compose(
             errors="replace",
             timeout=timeout,
             shell=False,
+            env=run_env,
         )
     except subprocess.TimeoutExpired as exc:
         out = (exc.stdout or "") + "\n" + (exc.stderr or "")
@@ -124,7 +144,60 @@ def docker_status() -> DockerEnvironment:
     return detect_docker_environment()
 
 
-def describe_lab(lab: LabSpec, *, env: DockerEnvironment | None = None) -> LabStatus:
+def _live_port_map(lab: LabSpec) -> dict[str, int] | None:
+    """Resolve actual published host ports from running containers."""
+    if not lab.container_names:
+        return None
+    published = container_published_ports(lab.container_names[0])
+    if not published:
+        return None
+    resolved: dict[str, int] = {}
+    for spec in lab.port_specs:
+        host = published.get(spec.container_port)
+        if host is None:
+            return None
+        resolved[spec.key] = host
+    return resolved
+
+
+def _normalize_port_overrides(
+    lab: LabSpec,
+    ports: dict[str, int] | list[int] | None,
+) -> dict[str, int]:
+    if ports is None:
+        return lab.resolve_ports()
+    if isinstance(ports, list):
+        if len(ports) != len(lab.port_specs):
+            raise ValueError(
+                f"端口数量不匹配：需要 {len(lab.port_specs)} 个，收到 {len(ports)}"
+            )
+        overrides = {spec.key: int(port) for spec, port in zip(lab.port_specs, ports)}
+        return lab.resolve_ports(overrides)
+    if isinstance(ports, dict):
+        cleaned = {str(k): int(v) for k, v in ports.items()}
+        return lab.resolve_ports(cleaned)
+    raise ValueError("ports 须为对象或整数数组")
+
+
+def _validate_port_values(port_map: dict[str, int]) -> list[str]:
+    errors: list[str] = []
+    seen: set[int] = set()
+    for key, port in port_map.items():
+        if port < 1 or port > 65535:
+            errors.append(f"{key}={port} 非法")
+            continue
+        if port in seen:
+            errors.append(f"端口重复: {port}")
+        seen.add(port)
+    return errors
+
+
+def describe_lab(
+    lab: LabSpec,
+    *,
+    env: DockerEnvironment | None = None,
+    desired_ports: dict[str, int] | None = None,
+) -> LabStatus:
     env = env or detect_docker_environment()
     containers: dict[str, bool | None] = {}
     for name in lab.container_names:
@@ -146,29 +219,46 @@ def describe_lab(lab: LabSpec, *, env: DockerEnvironment | None = None) -> LabSt
     else:
         state = "stopped"
 
-    owned_ports = set(lab.ports) if state in ("running", "partial") else set()
-    # Also treat ports as owned if containers report running even when connect fails
-    if any(containers.values()):
-        owned_ports = set(lab.ports)
+    live = _live_port_map(lab) if state in ("running", "partial") else None
+    port_map = live or desired_ports or lab.resolve_ports()
+    host_ports = lab.ports_list(port_map)
 
-    port_checks = check_ports(lab.ports, owned_ports=owned_ports)
+    owned_ports: set[int] = set()
+    if state in ("running", "partial"):
+        owned_ports = set(host_ports)
+
+    port_checks = check_ports(host_ports, owned_ports=owned_ports)
 
     blockers: list[str] = []
+    warnings: list[str] = []
     if not env.ready:
         blockers.extend(env.errors or ["Docker / Compose 未就绪"])
 
     foreign = [
-        p for p in port_checks if p.occupied and not p.owned_by_lab and state == "stopped"
+        p
+        for p in port_checks
+        if p.occupied and not p.owned_by_lab and state == "stopped"
     ]
     if foreign:
         ports = ", ".join(str(p.port) for p in foreign)
-        blockers.append(f"端口已被占用: {ports}")
+        warnings.append(f"默认/当前端口占用: {ports}（可在启动前改端口）")
 
-    can_start = env.ready and state != "running" and not foreign
-    # allow start when partial (retry) if no foreign ports
-    if state == "partial" and env.ready and not foreign:
+    # Allow start even when default ports conflict — user can edit ports.
+    can_start = env.ready and state != "running"
+    if state == "partial" and env.ready:
         can_start = True
     can_stop = env.ready and state in ("running", "partial")
+
+    port_infos = [
+        LabPortInfo(
+            key=spec.key,
+            label=spec.label,
+            default=spec.default,
+            value=port_map[spec.key],
+            editable=state == "stopped",
+        )
+        for spec in lab.port_specs
+    ]
 
     return LabStatus(
         id=lab.id,
@@ -177,9 +267,11 @@ def describe_lab(lab: LabSpec, *, env: DockerEnvironment | None = None) -> LabSt
         category=lab.category,
         compose_rel=lab.compose_rel,
         services=list(lab.services),
-        ports=list(lab.ports),
+        ports=host_ports,
+        default_ports=list(lab.default_ports),
+        port_infos=port_infos,
         container_names=list(lab.container_names),
-        endpoints=list(lab.endpoints),
+        endpoints=lab.endpoints_for(port_map),
         notes=lab.notes,
         state=state,
         containers_running=containers,
@@ -187,6 +279,7 @@ def describe_lab(lab: LabSpec, *, env: DockerEnvironment | None = None) -> LabSt
         can_start=can_start,
         can_stop=can_stop,
         blockers=blockers,
+        warnings=warnings,
     )
 
 
@@ -195,7 +288,13 @@ def list_lab_status(*, env: DockerEnvironment | None = None) -> list[LabStatus]:
     return [describe_lab(lab, env=env) for lab in all_labs()]
 
 
-def start_lab(lab_id: str, *, build: bool = True, timeout: float = 600.0) -> LabActionResult:
+def start_lab(
+    lab_id: str,
+    *,
+    build: bool = True,
+    timeout: float = 600.0,
+    ports: dict[str, int] | list[int] | None = None,
+) -> LabActionResult:
     lab = get_lab(lab_id)
     if lab is None:
         return LabActionResult(
@@ -203,6 +302,26 @@ def start_lab(lab_id: str, *, build: bool = True, timeout: float = 600.0) -> Lab
             lab_id=lab_id,
             action="start",
             message=f"未知靶场 id: {lab_id}",
+        )
+
+    try:
+        port_map = _normalize_port_overrides(lab, ports)
+    except ValueError as exc:
+        return LabActionResult(
+            ok=False,
+            lab_id=lab_id,
+            action="start",
+            message=str(exc),
+        )
+
+    value_errors = _validate_port_values(port_map)
+    if value_errors:
+        return LabActionResult(
+            ok=False,
+            lab_id=lab_id,
+            action="start",
+            message="；".join(value_errors),
+            ports=port_map,
         )
 
     env = detect_docker_environment()
@@ -214,10 +333,11 @@ def start_lab(lab_id: str, *, build: bool = True, timeout: float = 600.0) -> Lab
             message="Docker 环境未就绪，无法启动靶场",
             logs=env.errors,
             docker=env,
-            status=describe_lab(lab, env=env),
+            status=describe_lab(lab, env=env, desired_ports=port_map),
+            ports=port_map,
         )
 
-    status = describe_lab(lab, env=env)
+    status = describe_lab(lab, env=env, desired_ports=port_map)
     if status.state == "running":
         return LabActionResult(
             ok=True,
@@ -228,24 +348,24 @@ def start_lab(lab_id: str, *, build: bool = True, timeout: float = 600.0) -> Lab
             port_checks=status.port_checks,
             docker=env,
             status=status,
+            ports={p.key: p.value for p in status.port_infos},
         )
 
-    foreign = [
-        p
-        for p in status.port_checks
-        if p.occupied and not p.owned_by_lab
-    ]
+    host_ports = lab.ports_list(port_map)
+    port_checks = check_ports(host_ports, owned_ports=set())
+    foreign = [p for p in port_checks if p.occupied]
     if foreign and status.state == "stopped":
-        ports = ", ".join(str(p.port) for p in foreign)
+        ports_txt = ", ".join(str(p.port) for p in foreign)
         return LabActionResult(
             ok=False,
             lab_id=lab_id,
             action="start",
-            message=f"端口占用冲突，请先释放: {ports}",
+            message=f"端口占用冲突，请改端口后重试: {ports_txt}",
             state=status.state,
-            port_checks=status.port_checks,
+            port_checks=port_checks,
             docker=env,
-            status=status,
+            status=describe_lab(lab, env=env, desired_ports=port_map),
+            ports=port_map,
         )
 
     args = ["up", "-d"]
@@ -253,15 +373,23 @@ def start_lab(lab_id: str, *, build: bool = True, timeout: float = 600.0) -> Lab
         args.insert(1, "--build")
     args.extend(lab.services)
 
-    code, logs = _run_compose(lab, args, env=env, timeout=timeout)
-    new_status = describe_lab(lab, env=env)
+    code, logs = _run_compose(
+        lab,
+        args,
+        env=env,
+        timeout=timeout,
+        extra_env=lab.compose_env(port_map),
+    )
+    new_status = describe_lab(lab, env=env, desired_ports=port_map)
     ok = code == 0 and new_status.state in ("running", "partial")
     if code == 0 and new_status.state != "running":
-        # compose succeeded but container not yet healthy / still starting
         ok = True
         message = "已提交启动；容器可能仍在初始化，请稍后刷新状态"
     elif ok:
-        message = "靶场启动成功"
+        used = ", ".join(
+            f"{info.label}={info.value}" for info in new_status.port_infos
+        )
+        message = f"靶场启动成功（{used}）"
     else:
         message = f"启动失败（exit={code}）"
 
@@ -275,6 +403,7 @@ def start_lab(lab_id: str, *, build: bool = True, timeout: float = 600.0) -> Lab
         port_checks=new_status.port_checks,
         docker=env,
         status=new_status,
+        ports={p.key: p.value for p in new_status.port_infos},
     )
 
 
@@ -315,18 +444,28 @@ def stop_lab(lab_id: str, *, remove: bool = True, timeout: float = 180.0) -> Lab
 
     # Prefer stop+rm for shared root compose so sibling services stay up.
     # Subdirectory labs can use down.
+    # Pass default compose env so interpolation still works if compose re-reads file.
+    extra_env = lab.compose_env()
     if lab.compose_rel == "lab":
         args = ["stop", *lab.services]
-        code, logs = _run_compose(lab, args, env=env, timeout=timeout)
+        code, logs = _run_compose(
+            lab, args, env=env, timeout=timeout, extra_env=extra_env
+        )
         if code == 0 and remove:
             rm_code, rm_logs = _run_compose(
-                lab, ["rm", "-f", *lab.services], env=env, timeout=60.0
+                lab,
+                ["rm", "-f", *lab.services],
+                env=env,
+                timeout=60.0,
+                extra_env=extra_env,
             )
             logs = logs + rm_logs
             code = rm_code if rm_code != 0 else code
     else:
         args = ["down"] if remove else ["stop", *lab.services]
-        code, logs = _run_compose(lab, args, env=env, timeout=timeout)
+        code, logs = _run_compose(
+            lab, args, env=env, timeout=timeout, extra_env=extra_env
+        )
 
     new_status = describe_lab(lab, env=env)
     ok = code == 0 and new_status.state == "stopped"

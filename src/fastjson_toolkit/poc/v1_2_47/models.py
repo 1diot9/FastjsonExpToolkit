@@ -86,7 +86,7 @@ class Poc1247SendOptions(Poc1247GenerateOptions):
     """生成并（可选）发送到目标。"""
 
     target: str = Field(
-        "http://127.0.0.1:18047/api/fastjson",
+        "http://127.0.0.1:18247/api/fastjson",
         description="反序列化点 URL（默认版本靶场 1.2.47）",
     )
     send: bool = Field(False, description="是否 POST payload 到 target")

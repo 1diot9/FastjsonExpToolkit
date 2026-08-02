@@ -322,7 +322,7 @@ function Poc1247Panel() {
   const [currencyField, setCurrencyField] = useState("currency");
   const [jsonKeyWithType, setJsonKeyWithType] = useState("true");
   const [jsonKeyAsArray, setJsonKeyAsArray] = useState("false");
-  const [target, setTarget] = useState("http://127.0.0.1:18047/api/fastjson");
+  const [target, setTarget] = useState("http://127.0.0.1:18247/api/fastjson");
   const [send, setSend] = useState("false");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
@@ -388,8 +388,9 @@ function Poc1247Panel() {
         <CardHeader>
           <CardTitle>生成参数</CardTitle>
           <CardDescription>
-            对接 <code>/api/poc/1.2.47</code>。默认靶场端口{" "}
-            <code>18047</code>（版本矩阵 fj-1-2-47）。
+            对接 <code>/api/poc/1.2.47</code>。完整 gadget 靶场端口{" "}
+            <code>18247</code>（<code>lab/fastjson-1247-lab</code>；勿用版本矩阵{" "}
+            <code>18047</code>）。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -700,7 +701,7 @@ function Poc1268Panel() {
   );
   const [wrapCurrency, setWrapCurrency] = useState("false");
   const [currencyField, setCurrencyField] = useState("currency");
-  const [target, setTarget] = useState("http://127.0.0.1:18168/api/fastjson");
+  const [target, setTarget] = useState("http://127.0.0.1:18268/api/fastjson");
   const [send, setSend] = useState("false");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
@@ -768,7 +769,7 @@ function Poc1268Panel() {
           <CardTitle>生成参数</CardTitle>
           <CardDescription>
             对接 <code>/api/poc/1.2.68</code>。依赖靶场{" "}
-            <code>lab/fastjson-1268-lab</code> → 端口 <code>18168</code>。
+            <code>lab/fastjson-1268-lab</code> → 端口 <code>18268</code>。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1017,7 +1018,7 @@ function Poc1280Panel() {
   );
   const [wrapCurrency, setWrapCurrency] = useState("false");
   const [currencyField, setCurrencyField] = useState("currency");
-  const [target, setTarget] = useState("http://127.0.0.1:18180/api/fastjson");
+  const [target, setTarget] = useState("http://127.0.0.1:18280/api/fastjson");
   const [send, setSend] = useState("false");
   const [resetCache, setResetCache] = useState("true");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
@@ -1089,7 +1090,7 @@ function Poc1280Panel() {
           <CardTitle>生成参数</CardTitle>
           <CardDescription>
             对接 <code>/api/poc/1.2.80</code>。一律以写文件证明 RCE；靶场{" "}
-            <code>lab/fastjson-1280-lab</code> → <code>18180</code>。
+            <code>lab/fastjson-1280-lab</code> → <code>18280</code>。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

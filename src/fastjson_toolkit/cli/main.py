@@ -398,7 +398,7 @@ def poc_1280_cmd(
         help="Currency MiscCodec 字段：currency 或 currencyCode",
     ),
     target: str = typer.Option(
-        "http://127.0.0.1:18180/api/fastjson",
+        "http://127.0.0.1:18280/api/fastjson",
         "--url",
         "-u",
         help="发送目标（配合 --send）",
@@ -503,7 +503,7 @@ def poc_1268_cmd(
         help="Currency MiscCodec 字段：currency 或 currencyCode",
     ),
     target: str = typer.Option(
-        "http://127.0.0.1:18168/api/fastjson",
+        "http://127.0.0.1:18268/api/fastjson",
         "--url",
         "-u",
         help="发送目标（配合 --send）",
@@ -620,7 +620,7 @@ def poc_1247_cmd(
         help="json_key 用 JSONArray 作 key：[{...}]:{}",
     ),
     target: str = typer.Option(
-        "http://127.0.0.1:18047/api/fastjson",
+        "http://127.0.0.1:18247/api/fastjson",
         "--url",
         "-u",
         help="发送目标（配合 --send）",

@@ -23,7 +23,7 @@ COMMON_NOTES = [
     "原理：双 @type 以 java.lang.Exception 作 expectClass，"
     "ThrowableDeserializer.cast → ParserConfig.getDeserializer 缓存字段类型后恢复利用类。",
     "1.2.83 起对 Throwable 子类从 mapping 取出后清空，本链失效。",
-    "多步链必须同进程共享 ParserConfig；靶场 http://127.0.0.1:18180/api/fastjson ；"
+    "多步链必须同进程共享 ParserConfig；靶场 http://127.0.0.1:18280/api/fastjson ；"
     "攻击资源（容器内自拉取）http://127.0.0.1:18080/attack/。",
     "payload 含重复 @type，勿再 json.dumps。仅授权测试 / 本地靶场。",
     "getter：$ref 已内嵌；业务点另有期望类时可开 wrap_currency 套 Currency"

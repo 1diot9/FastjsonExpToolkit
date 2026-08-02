@@ -20,7 +20,7 @@ from fastjson_toolkit.waf import apply_waf_payload
 COMMON_NOTES = [
     "原理：@type=java.lang.Class → MiscCodec → TypeUtils.loadClass 写入 mappings；"
     "随后 checkAutoType 优先命中缓存，绕过黑名单（≤1.2.47；1.2.48 起默认不缓存）。",
-    "仅用于授权测试 / 本地靶场。版本矩阵默认端点：http://127.0.0.1:18047/api/fastjson",
+    "仅用于授权测试 / 本地靶场。完整 gadget 靶场：http://127.0.0.1:18247/api/fastjson",
     "BCEL 需 jdk≤8u251 且存在对应 dbcp/mybatis；JdbcRowSet 需可出网 JNDI；"
     "H2/C3P0 需 classpath 含对应依赖。",
     "getter：无期望类可用 $ref / JSONObject 作 key；有期望类需套 Currency"

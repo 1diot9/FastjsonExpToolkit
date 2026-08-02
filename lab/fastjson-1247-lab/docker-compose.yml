@@ -4,7 +4,7 @@ services:
     image: fastjson-exp-toolkit/fastjson-1247-lab:1.2.47
     container_name: fastjson-1247-lab
     ports:
-      - "18147:18080"
+      - "${LAB_PORT_FJ_1247:-18247}:18080"
     environment:
       SERVER_PORT: "18080"
     extra_hosts:

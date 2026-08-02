@@ -1,7 +1,7 @@
 """Docker lab catalog / port helpers (no docker required)."""
 
 from fastjson_toolkit.config import project_root
-from fastjson_toolkit.lab.catalog import all_labs, get_lab
+from fastjson_toolkit.lab.catalog import all_default_ports, all_labs, get_lab
 from fastjson_toolkit.lab.docker_env import DockerEnvironment, check_ports
 from fastjson_toolkit.lab.service import describe_lab, list_lab_status
 
@@ -15,10 +15,33 @@ def test_lab_catalog_ids_unique():
     assert get_lab("nope") is None
 
 
+def test_default_ports_unique():
+    ports = all_default_ports()
+    assert len(ports) == len(set(ports))
+    assert 18247 in ports
+    assert 18268 in ports
+    assert 18280 in ports
+    assert 18505 in ports
+    assert 18047 in ports  # version matrix stays distinct from gadget
+
+
+def test_resolve_port_override():
+    lab = get_lab("json-fingerprint")
+    assert lab is not None
+    m = lab.resolve_ports({"http": 19080})
+    assert m["http"] == 19080
+    assert lab.compose_env(m)["LAB_PORT_JSON_FINGERPRINT"] == "19080"
+    assert "19080" in lab.endpoints_for(m)[0]
+
+
 def test_lab_compose_files_exist():
     for lab in all_labs():
         compose = project_root().joinpath(*lab.compose_rel.split("/")) / "docker-compose.yml"
         assert compose.is_file(), f"missing {compose}"
+        text = compose.read_text(encoding="utf-8")
+        for spec in lab.port_specs:
+            assert spec.env in text
+            assert str(spec.default) in text
 
 
 def test_check_ports_shape():

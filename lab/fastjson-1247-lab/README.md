@@ -6,7 +6,7 @@ Class 缓存绕过 + 依赖 gadget 证明靶场（AutoType 关闭）。
 
 ```bash
 docker compose up --build -d
-curl http://127.0.0.1:18147/api/health
+curl http://127.0.0.1:18247/api/health
 ```
 
 ## 端点

@@ -70,7 +70,7 @@ class Poc1280SendOptions(Poc1280GenerateOptions):
     """生成并（可选）按步骤发送到目标。"""
 
     target: str = Field(
-        "http://127.0.0.1:18180/api/fastjson",
+        "http://127.0.0.1:18280/api/fastjson",
         description="反序列化点 URL（默认 1.2.80 依赖靶场）",
     )
     send: bool = Field(False, description="是否按步骤 POST payload 到 target")

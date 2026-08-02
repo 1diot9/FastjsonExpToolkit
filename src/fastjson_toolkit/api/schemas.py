@@ -186,7 +186,7 @@ class Poc1247Request(BaseModel):
     )
     waf_options: Optional[WafOptions] = None
     target: str = Field(
-        "http://127.0.0.1:18047/api/fastjson",
+        "http://127.0.0.1:18247/api/fastjson",
         description="可选发送目标（send=true 时）",
     )
     send: bool = Field(False, description="是否 POST 到 target")
@@ -226,7 +226,7 @@ class Poc1268Request(BaseModel):
     )
     waf_options: Optional[WafOptions] = None
     target: str = Field(
-        "http://127.0.0.1:18168/api/fastjson",
+        "http://127.0.0.1:18268/api/fastjson",
         description="可选发送目标（send=true 时）",
     )
     send: bool = Field(False, description="是否 POST 到 target")
@@ -240,6 +240,13 @@ class Poc1268Request(BaseModel):
 class LabStartRequest(BaseModel):
     build: bool = Field(True, description="启动时是否 docker compose --build")
     timeout: float = Field(600.0, ge=30, le=1800, description="compose 超时秒数")
+    ports: Optional[dict[str, int]] = Field(
+        None,
+        description=(
+            "主机端口覆盖，key 与靶场 port_infos.key 对应，"
+            "如 {\"http\": 19080} 或 CVE 的 {\"http\": 18083, \"jdwp\": 18505}"
+        ),
+    )
 
 
 class LabStopRequest(BaseModel):
@@ -274,7 +281,7 @@ class Poc1280Request(BaseModel):
     )
     waf_options: Optional[WafOptions] = None
     target: str = Field(
-        "http://127.0.0.1:18180/api/fastjson",
+        "http://127.0.0.1:18280/api/fastjson",
         description="可选发送目标（send=true 时）",
     )
     send: bool = Field(False, description="是否按步骤 POST 到 target")

@@ -6,7 +6,7 @@ expectClass（`java.lang.AutoCloseable`）绕过 + commons-io / JDK / JDBC 证�
 
 ```bash
 docker compose up --build -d
-curl http://127.0.0.1:18168/api/health
+curl http://127.0.0.1:18268/api/health
 ```
 
 ## 端点

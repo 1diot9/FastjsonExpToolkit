@@ -527,7 +527,7 @@ def create_app() -> FastAPI:
         description=(
             "生成 expectClass(AutoCloseable) 绕过 payload（JDK 写/截断、commons-io、"
             "MySQL/PG 等）。默认只生成；send=true 时 POST 到 target（授权测试）。"
-            "依赖靶场：lab/fastjson-1268-lab :18168。"
+            "依赖靶场：lab/fastjson-1268-lab :18268。"
         ),
     )
     def poc_1268(req: Poc1268Request) -> Poc1268SendResult:
@@ -584,7 +584,7 @@ def create_app() -> FastAPI:
         description=(
             "生成 Exception expectClass + 反序列化器缓存绕过 payload（jackson→InputStream、"
             "commons-io、PG/MySQL、groovy、aspectj、jython）。多步链按 steps 顺序发送。"
-            "依赖靶场：lab/fastjson-1280-lab :18180。"
+            "依赖靶场：lab/fastjson-1280-lab :18280。"
         ),
     )
     def poc_1280(req: Poc1280Request) -> Poc1280SendResult:
@@ -705,7 +705,12 @@ def create_app() -> FastAPI:
         lab_id: str,
         req: LabStartRequest = LabStartRequest(),
     ) -> dict[str, Any]:
-        result = start_lab(lab_id, build=req.build, timeout=req.timeout)
+        result = start_lab(
+            lab_id,
+            build=req.build,
+            timeout=req.timeout,
+            ports=req.ports,
+        )
         if not result.ok and result.message.startswith("未知靶场"):
             raise HTTPException(status_code=404, detail=result.message)
         if not result.ok:

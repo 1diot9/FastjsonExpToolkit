@@ -247,3 +247,60 @@ def container_running(name: str, *, timeout: float = 10.0) -> bool | None:
     if proc.returncode != 0:
         return False
     return proc.stdout.strip().lower() == "true"
+
+
+def container_published_ports(
+    name: str, *, timeout: float = 10.0
+) -> dict[int, int]:
+    """
+    Map container_port -> host_port for a running container.
+    Empty dict if not found / not running.
+    """
+    import json
+
+    docker_bin = shutil.which("docker")
+    if not docker_bin:
+        return {}
+    try:
+        proc = _run(
+            [
+                docker_bin,
+                "inspect",
+                "-f",
+                "{{json .NetworkSettings.Ports}}",
+                name,
+            ],
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return {}
+    try:
+        raw = json.loads(proc.stdout.strip())
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
+    mapping: dict[int, int] = {}
+    for key, bindings in raw.items():
+        # key like "8080/tcp"
+        try:
+            container_port = int(str(key).split("/", 1)[0])
+        except ValueError:
+            continue
+        if not bindings:
+            continue
+        for bind in bindings:
+            if not isinstance(bind, dict):
+                continue
+            host_port = bind.get("HostPort")
+            if host_port:
+                try:
+                    mapping[container_port] = int(host_port)
+                    break
+                except (TypeError, ValueError):
+                    continue
+    return mapping
+

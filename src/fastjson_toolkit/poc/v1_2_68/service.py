@@ -20,7 +20,7 @@ from fastjson_toolkit.waf import apply_waf_payload
 COMMON_NOTES = [
     "原理：双 @type，首个 java.lang.AutoCloseable 作 expectClass，"
     "绕过 checkAutoType（≤1.2.68；1.2.69 起 AutoCloseable 进黑名单）。",
-    "仅用于授权测试 / 本地靶场。依赖靶场：http://127.0.0.1:18168/api/fastjson",
+    "仅用于授权测试 / 本地靶场。依赖靶场：http://127.0.0.1:18268/api/fastjson",
     "payload 含重复 @type / StringCodec 畸形写法，勿再 json.dumps 规范化。",
     "getter：$ref 已内嵌；业务点另有期望类时可开 wrap_currency 套 Currency"
     "（MiscCodec，与版本无关）。",

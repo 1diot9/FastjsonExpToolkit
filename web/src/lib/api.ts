@@ -623,6 +623,14 @@ export type PortCheck = {
 
 export type LabState = "running" | "partial" | "stopped" | "unknown";
 
+export type LabPortInfo = {
+  key: string;
+  label: string;
+  default: number;
+  value: number;
+  editable: boolean;
+};
+
 export type LabStatus = {
   id: string;
   name: string;
@@ -631,6 +639,8 @@ export type LabStatus = {
   compose_rel: string;
   services: string[];
   ports: number[];
+  default_ports: number[];
+  port_infos: LabPortInfo[];
   container_names: string[];
   endpoints: string[];
   notes: string;
@@ -640,6 +650,7 @@ export type LabStatus = {
   can_start: boolean;
   can_stop: boolean;
   blockers: string[];
+  warnings: string[];
 };
 
 export type LabListResponse = {
@@ -657,6 +668,7 @@ export type LabActionResult = {
   port_checks: PortCheck[];
   docker: DockerEnvironment | null;
   status: LabStatus | null;
+  ports: Record<string, number>;
 };
 
 export async function fetchLabDocker(): Promise<DockerEnvironment> {
@@ -673,7 +685,11 @@ export async function fetchLabs(): Promise<LabListResponse> {
 
 export async function startLab(
   labId: string,
-  body?: { build?: boolean; timeout?: number },
+  body?: {
+    build?: boolean;
+    timeout?: number;
+    ports?: Record<string, number>;
+  },
 ): Promise<LabActionResult> {
   const res = await apiFetch(`/api/lab/${encodeURIComponent(labId)}/start`, {
     method: "POST",

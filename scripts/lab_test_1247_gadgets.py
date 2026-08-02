@@ -26,7 +26,7 @@ from fastjson_toolkit.poc.v1_2_47.payloads import (
 ROOT = Path(__file__).resolve().parents[1]
 LAB = ROOT / "lab" / "fastjson-1247-lab"
 PROOF = ROOT / "tmp_lab" / "1247_proof"
-BASE = "http://127.0.0.1:18147"
+BASE = "http://127.0.0.1:18247"
 CONTAINER = "fastjson-1247-lab"
 
 
