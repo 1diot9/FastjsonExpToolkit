@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 from fastjson_toolkit.waf.models import WafOptions
+
+EchoEngineField = Literal[
+    "auto",
+    "spring",
+    "undertow",
+    "tomcat",
+    "jetty",
+    "weblogic",
+    "websphere",
+    "resin",
+    "struts2",
+    "httpserver",
+    "dfs",
+]
+
 
 
 class Poc1247GenerateOptions(BaseModel):
@@ -58,6 +73,10 @@ class Poc1247GenerateOptions(BaseModel):
         False,
         description="json_key 最外层改为 JSONArray 作 key（[{...}]:{}）",
     )
+    echo: bool = Field(False, description="BCEL/H2/MyBatis 自动生成回显类")
+    engine: EchoEngineField = Field("auto", description="回显引擎")
+    cmd: str = Field("id", description="回显默认命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头")
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后按顺序叠加的 WAF 变换 id（见 GET /api/waf/techniques）",
@@ -80,6 +99,11 @@ class Poc1247GenerateResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
     requires: list[str] = Field(default_factory=list)
     jdk: str = ""
+    echo: bool = False
+    engine: str = ""
+    cmd_header: str = ""
+    class_b64: Optional[str] = None
+    bcel_code: Optional[str] = None
 
 
 class Poc1247SendOptions(Poc1247GenerateOptions):
@@ -112,4 +136,10 @@ class Poc1247SendResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
     requires: list[str] = Field(default_factory=list)
     jdk: str = ""
+    echo: bool = False
+    engine: str = ""
+    cmd_header: str = ""
+    class_b64: Optional[str] = None
+    bcel_code: Optional[str] = None
+    echo_output: Optional[str] = None
     raw: dict[str, Any] = Field(default_factory=dict)

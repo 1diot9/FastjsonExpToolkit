@@ -101,7 +101,7 @@ Backend (Python FastAPI)
 
 - 通用自定义字节码上传 UI（1.2.47 BCEL/H2/C3P0 已支持 `--class-b64`；Web 侧尚未统一上传）
 - ognl+io / ajt+xalan 等少见组合链（仅文档引用）
-- 通用回显 / 内存马编排（1.2.83 证明 PoC 内已含专项实现）
+- ✅ 通用回显（`poc/echo/`，各 RCE PoC 已接引擎选项；内存马编排仍待 Phase 5）
 - 按版本探测结果一键推荐 PoC 的工作流串联
 
 ---
@@ -136,8 +136,15 @@ Backend (Python FastAPI)
 
 ### Phase 4 — 回显
 
-- 实现常见回显手法，与 PoC 组合
-- Web：命令输入、回显结果展示（shadcn Textarea / Alert）
+- ✅ 通用回显模块 `poc/echo/`（参考 pen4uin/java-echo-generator）
+  - 引擎：auto / spring / undertow / tomcat / jetty / weblogic / websphere / resin / struts2 / dfs
+  - JDK12+：Unsafe `setAccessible` / 静态 Field 写入；DFS 兼容 javax+jakarta
+  - ≤1.2.47：BCEL / MyBatis / H2（及 JdbcRowSet 产出 class）；CLI `--echo` / Web 控件
+  - ≤1.2.68：postgresql_ssrf（Spring XML + echo.jar）
+  - ≤1.2.80：postgresql / jython / groovy
+  - CVE-2026-16723：共用同一套引擎
+- Web：命令 / 引擎 / Header；结果展示 `echo_output`
+- API：`GET /api/poc/echo/engines`
 
 ### Phase 5 — 内存马注入
 

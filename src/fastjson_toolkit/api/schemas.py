@@ -126,7 +126,10 @@ class Poc16723Request(BaseModel):
     port: int = Field(9192, ge=1, le=65535)
     cmd: str = Field("id", description="执行 / 回显验证命令")
     echo: bool = Field(True, description="回显模式（推荐证明）")
-    engine: str = Field("auto", description="auto/spring/undertow/tomcat")
+    engine: str = Field(
+        "auto",
+        description="auto/spring/undertow/tomcat/jetty/weblogic/websphere/resin/struts2/httpserver/dfs",
+    )
     json_path: str = Field("/json", description="反序列化路径")
     docker_container: str = Field(
         "cve-2026-16723-undertow",
@@ -180,6 +183,10 @@ class Poc1247Request(BaseModel):
     json_key_as_array: bool = Field(
         False, description="json_key 用 JSONArray 作 key"
     )
+    echo: bool = Field(False, description="BCEL/H2/MyBatis 自动回显")
+    engine: str = Field("auto", description="回显引擎")
+    cmd: str = Field("id", description="回显默认命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头")
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后叠加的 WAF 变换 id（见 GET /api/waf/techniques）",
@@ -220,6 +227,11 @@ class Poc1268Request(BaseModel):
     currency_field: str = Field(
         "currency", description="Currency 字段：currency 或 currencyCode"
     )
+    echo: bool = Field(False, description="postgresql_ssrf 回显")
+    engine: str = Field("auto", description="回显引擎")
+    cmd: str = Field("id", description="回显默认命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头")
+    attack_base: Optional[str] = Field(None, description="回显资源托管基址")
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后叠加的 WAF 变换 id（见 GET /api/waf/techniques）",
@@ -275,6 +287,11 @@ class Poc1280Request(BaseModel):
     currency_field: str = Field(
         "currency", description="Currency 字段：currency 或 currencyCode"
     )
+    echo: bool = Field(False, description="postgresql/jython/groovy 回显")
+    engine: str = Field("auto", description="回显引擎")
+    cmd: str = Field("id", description="回显默认命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头")
+    attack_base: Optional[str] = Field(None, description="回显资源托管基址")
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后叠加的 WAF 变换 id（多步链逐步应用）",

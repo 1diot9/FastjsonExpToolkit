@@ -32,6 +32,7 @@ import {
   type WafControlValue,
 } from "@/components/waf-controls";
 import {
+  ECHO_ENGINES,
   listPoc1247Gadgets,
   listPoc1268Gadgets,
   listPoc1280Gadgets,
@@ -39,6 +40,7 @@ import {
   runPoc1268,
   runPoc1280,
   runPoc16723,
+  type EchoEngine,
   type Poc1247Gadget,
   type Poc1247Result,
   type Poc1268Gadget,
@@ -48,6 +50,90 @@ import {
   type Poc16723Result,
 } from "@/lib/api";
 
+const ECHO_1247 = new Set([
+  "jdbc_rowset",
+  "bcel_tomcat_dbcp",
+  "bcel_tomcat_dbcp2",
+  "bcel_commons_dbcp",
+  "bcel_commons_dbcp2",
+  "mybatis_bcel",
+  "h2_jdbc",
+]);
+const ECHO_1268 = new Set(["postgresql_ssrf"]);
+const ECHO_1280 = new Set(["postgresql", "jython", "groovy"]);
+
+function EchoFields(props: {
+  echo: string;
+  setEcho: (v: string) => void;
+  engine: EchoEngine;
+  setEngine: (v: EchoEngine) => void;
+  cmd: string;
+  setCmd: (v: string) => void;
+  cmdHeader: string;
+  setCmdHeader: (v: string) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="space-y-4 rounded-lg border border-border/60 p-3">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-2">
+          <Label>命令回显</Label>
+          <Select value={props.echo} onValueChange={props.setEcho}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="false">关闭</SelectItem>
+              <SelectItem value="true">开启</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label>回显引擎</Label>
+          <Select
+            value={props.engine}
+            onValueChange={(v) => props.setEngine(v as EchoEngine)}
+            disabled={props.echo !== "true"}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ECHO_ENGINES.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {props.echo === "true" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="echo-cmd">命令</Label>
+            <Input
+              id="echo-cmd"
+              value={props.cmd}
+              onChange={(e) => props.setCmd(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="echo-hdr">命令请求头</Label>
+            <Input
+              id="echo-hdr"
+              value={props.cmdHeader}
+              onChange={(e) => props.setCmdHeader(e.target.value)}
+            />
+          </div>
+        </div>
+      ) : null}
+      {props.hint ? (
+        <p className="text-xs text-muted-foreground">{props.hint}</p>
+      ) : null}
+    </div>
+  );
+}
 function CurrencyWrapControls({
   wrap,
   onWrapChange,
@@ -100,9 +186,7 @@ function Poc16723Panel() {
   const [host, setHost] = useState("attacker");
   const [port, setPort] = useState("9192");
   const [cmd, setCmd] = useState("id");
-  const [engine, setEngine] = useState<"auto" | "spring" | "undertow" | "tomcat">(
-    "undertow",
-  );
+  const [engine, setEngine] = useState<EchoEngine>("undertow");
   const [jsonPath, setJsonPath] = useState("/json");
   const [dockerContainer, setDockerContainer] = useState(
     "cve-2026-16723-undertow",
@@ -214,18 +298,17 @@ function Poc16723Panel() {
               <Label>回显引擎</Label>
               <Select
                 value={engine}
-                onValueChange={(v) =>
-                  setEngine(v as "auto" | "spring" | "undertow" | "tomcat")
-                }
+                onValueChange={(v) => setEngine(v as EchoEngine)}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="auto">auto</SelectItem>
-                  <SelectItem value="undertow">undertow</SelectItem>
-                  <SelectItem value="spring">spring</SelectItem>
-                  <SelectItem value="tomcat">tomcat</SelectItem>
+                  {ECHO_ENGINES.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -322,6 +405,10 @@ function Poc1247Panel() {
   const [currencyField, setCurrencyField] = useState("currency");
   const [jsonKeyWithType, setJsonKeyWithType] = useState("true");
   const [jsonKeyAsArray, setJsonKeyAsArray] = useState("false");
+  const [echo, setEcho] = useState("false");
+  const [engine, setEngine] = useState<EchoEngine>("auto");
+  const [cmd, setCmd] = useState("id");
+  const [cmdHeader, setCmdHeader] = useState("X-Cmd");
   const [target, setTarget] = useState("http://127.0.0.1:18247/api/fastjson");
   const [send, setSend] = useState("false");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
@@ -356,14 +443,20 @@ function Poc1247Panel() {
         currency_field: currencyField,
         json_key_with_type: jsonKeyWithType === "true",
         json_key_as_array: jsonKeyAsArray === "true",
+        echo: echo === "true",
+        engine,
+        cmd: cmd.trim() || "id",
+        cmd_header: cmdHeader.trim() || "X-Cmd",
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
         send: doSend,
       });
       setResult(data);
-      if (data.ok) toast.success(doSend ? "已发送" : "已生成");
-      else toast.error(data.summary || "失败");
+      if (data.ok) {
+        if (data.echo_output) toast.success("回显成功");
+        else toast.success(doSend ? "已发送" : "已生成");
+      } else toast.error(data.summary || "失败");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(msg);
@@ -485,6 +578,20 @@ function Poc1247Panel() {
                 onChange={(e) => setH2Url(e.target.value)}
               />
             </div>
+          ) : null}
+
+          {ECHO_1247.has(gadget) ? (
+            <EchoFields
+              echo={echo}
+              setEcho={setEcho}
+              engine={engine}
+              setEngine={setEngine}
+              cmd={cmd}
+              setCmd={setCmd}
+              cmdHeader={cmdHeader}
+              setCmdHeader={setCmdHeader}
+              hint="参考 java-echo-generator；JDK12+ 用 Unsafe 反射。开启后自动编译回显类填入 BCEL/H2（需本机 javac）。"
+            />
           ) : null}
 
           <div className="grid gap-2">
@@ -670,6 +777,16 @@ function Poc1247Panel() {
                   value={result.response_preview}
                 />
               ) : null}
+              {result.echo_output ? (
+                <div className="grid gap-2">
+                  <Label>回显输出</Label>
+                  <Textarea
+                    readOnly
+                    className="min-h-28 font-mono text-xs"
+                    value={result.echo_output}
+                  />
+                </div>
+              ) : null}
               {result.notes.length > 0 ? (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                   {result.notes.slice(0, 4).map((n) => (
@@ -701,6 +818,10 @@ function Poc1268Panel() {
   );
   const [wrapCurrency, setWrapCurrency] = useState("false");
   const [currencyField, setCurrencyField] = useState("currency");
+  const [echo, setEcho] = useState("false");
+  const [engine, setEngine] = useState<EchoEngine>("auto");
+  const [cmd, setCmd] = useState("id");
+  const [cmdHeader, setCmdHeader] = useState("X-Cmd");
   const [target, setTarget] = useState("http://127.0.0.1:18268/api/fastjson");
   const [send, setSend] = useState("false");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
@@ -736,14 +857,20 @@ function Poc1268Panel() {
         socket_factory_arg: socketFactoryArg.trim() || null,
         wrap_currency: wrapCurrency === "true",
         currency_field: currencyField,
+        echo: echo === "true",
+        engine,
+        cmd: cmd.trim() || "id",
+        cmd_header: cmdHeader.trim() || "X-Cmd",
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
         send: doSend,
       });
       setResult(data);
-      if (data.ok) toast.success(doSend ? "已发送" : "已生成");
-      else toast.error(data.summary || "失败");
+      if (data.ok) {
+        if (data.echo_output) toast.success("回显成功");
+        else toast.success(doSend ? "已发送" : "已生成");
+      } else toast.error(data.summary || "失败");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(msg);
@@ -882,6 +1009,20 @@ function Poc1268Panel() {
             </div>
           ) : null}
 
+          {ECHO_1268.has(gadget) ? (
+            <EchoFields
+              echo={echo}
+              setEcho={setEcho}
+              engine={engine}
+              setEngine={setEngine}
+              cmd={cmd}
+              setCmd={setCmd}
+              cmdHeader={cmdHeader}
+              setCmdHeader={setCmdHeader}
+              hint="postgresql_ssrf：生成 bean-echo.xml + echo.jar，需 HTTP 托管后由目标拉取。"
+            />
+          ) : null}
+
           <CurrencyWrapControls
             wrap={wrapCurrency}
             onWrapChange={setWrapCurrency}
@@ -994,6 +1135,16 @@ function Poc1268Panel() {
                   value={result.response_preview}
                 />
               ) : null}
+              {result.echo_output ? (
+                <div className="grid gap-2">
+                  <Label>回显输出</Label>
+                  <Textarea
+                    readOnly
+                    className="min-h-28 font-mono text-xs"
+                    value={result.echo_output}
+                  />
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         ) : null}
@@ -1018,6 +1169,10 @@ function Poc1280Panel() {
   );
   const [wrapCurrency, setWrapCurrency] = useState("false");
   const [currencyField, setCurrencyField] = useState("currency");
+  const [echo, setEcho] = useState("false");
+  const [engine, setEngine] = useState<EchoEngine>("auto");
+  const [cmd, setCmd] = useState("id");
+  const [cmdHeader, setCmdHeader] = useState("X-Cmd");
   const [target, setTarget] = useState("http://127.0.0.1:18280/api/fastjson");
   const [send, setSend] = useState("false");
   const [resetCache, setResetCache] = useState("true");
@@ -1052,6 +1207,10 @@ function Poc1280Panel() {
         classpath: classpath.trim() || null,
         wrap_currency: wrapCurrency === "true",
         currency_field: currencyField,
+        echo: echo === "true",
+        engine,
+        cmd: cmd.trim() || "id",
+        cmd_header: cmdHeader.trim() || "X-Cmd",
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
@@ -1059,8 +1218,10 @@ function Poc1280Panel() {
         reset_cache: resetCache === "true",
       });
       setResult(data);
-      if (data.ok) toast.success(doSend ? "已按步发送" : "已生成");
-      else toast.error(data.summary || "失败");
+      if (data.ok) {
+        if (data.echo_output) toast.success("回显成功");
+        else toast.success(doSend ? "已按步发送" : "已生成");
+      } else toast.error(data.summary || "失败");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(msg);
@@ -1190,6 +1351,20 @@ function Poc1280Panel() {
                 onChange={(e) => setClasspath(e.target.value)}
               />
             </div>
+          ) : null}
+
+          {ECHO_1280.has(gadget) ? (
+            <EchoFields
+              echo={echo}
+              setEcho={setEcho}
+              engine={engine}
+              setEngine={setEngine}
+              cmd={cmd}
+              setCmd={setCmd}
+              cmdHeader={cmdHeader}
+              setCmdHeader={setCmdHeader}
+              hint="postgresql/jython：bean-echo.xml+echo.jar；groovy：evil-echo.jar。需可被目标拉取。"
+            />
           ) : null}
 
           <CurrencyWrapControls
@@ -1330,6 +1505,16 @@ function Poc1280Panel() {
                   className="min-h-28 font-mono text-xs"
                   value={result.response_preview}
                 />
+              ) : null}
+              {result.echo_output ? (
+                <div className="grid gap-2">
+                  <Label>回显输出</Label>
+                  <Textarea
+                    readOnly
+                    className="min-h-28 font-mono text-xs"
+                    value={result.echo_output}
+                  />
+                </div>
               ) : null}
             </CardContent>
           </Card>

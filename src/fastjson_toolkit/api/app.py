@@ -466,6 +466,16 @@ def create_app() -> FastAPI:
     def poc_1247_gadgets() -> list[dict[str, Any]]:
         return list_poc_1247_gadgets()
 
+    @app.get(
+        "/api/poc/echo/engines",
+        tags=["poc"],
+        summary="命令回显引擎目录（多中间件 / JDK12+）",
+    )
+    def poc_echo_engines() -> list[dict[str, str]]:
+        from fastjson_toolkit.poc.echo import list_engines
+
+        return list_engines()
+
     @app.post(
         "/api/poc/1.2.47",
         response_model=Poc1247SendResult,
@@ -473,6 +483,7 @@ def create_app() -> FastAPI:
         summary="Fastjson ≤1.2.47 缓存绕过证明 PoC",
         description=(
             "生成 Class 缓存绕过 payload（JdbcRowSet / BCEL+dbcp / C3P0 / MyBatis / H2）。"
+            "echo=true 时为 BCEL/H2/MyBatis 自动生成回显类。"
             "默认只生成；send=true 时 POST 到 target（授权测试）。"
         ),
     )
@@ -494,6 +505,10 @@ def create_app() -> FastAPI:
             currency_field=req.currency_field,
             json_key_with_type=req.json_key_with_type,
             json_key_as_array=req.json_key_as_array,
+            echo=req.echo,
+            engine=req.engine,  # type: ignore[arg-type]
+            cmd=req.cmd,
+            cmd_header=req.cmd_header,
             waf_techniques=list(req.waf_techniques or []),
             waf_options=req.waf_options,
             target=req.target,
@@ -551,6 +566,11 @@ def create_app() -> FastAPI:
             socket_factory_arg=req.socket_factory_arg,
             wrap_currency=req.wrap_currency,
             currency_field=req.currency_field,
+            echo=req.echo,
+            engine=req.engine,  # type: ignore[arg-type]
+            cmd=req.cmd,
+            cmd_header=req.cmd_header,
+            attack_base=req.attack_base,
             waf_techniques=list(req.waf_techniques or []),
             waf_options=req.waf_options,
             target=req.target,
@@ -606,6 +626,11 @@ def create_app() -> FastAPI:
             classpath=req.classpath,
             wrap_currency=req.wrap_currency,
             currency_field=req.currency_field,
+            echo=req.echo,
+            engine=req.engine,  # type: ignore[arg-type]
+            cmd=req.cmd,
+            cmd_header=req.cmd_header,
+            attack_base=req.attack_base,
             waf_techniques=list(req.waf_techniques or []),
             waf_options=req.waf_options,
             target=req.target,
@@ -754,9 +779,12 @@ def create_app() -> FastAPI:
         if mode not in ("http", "fd"):
             raise HTTPException(status_code=400, detail="mode 仅支持 http 或 fd")
         engine = (req.engine or "auto").strip().lower()
-        if engine not in ("auto", "spring", "undertow", "tomcat"):
+        from fastjson_toolkit.poc.echo import ECHO_ENGINES
+
+        if engine not in ECHO_ENGINES:
             raise HTTPException(
-                status_code=400, detail="engine 仅支持 auto/spring/undertow/tomcat"
+                status_code=400,
+                detail=f"engine 仅支持 {', '.join(ECHO_ENGINES)}",
             )
         target = req.target.strip()
         if not target:

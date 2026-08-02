@@ -28,7 +28,10 @@ class Poc16723Options(BaseModel):
     port: int = Field(9192, ge=1, le=65535, description="攻击者 HTTP 端口")
     cmd: str = Field("id", description="执行/回显验证命令")
     echo: bool = Field(True, description="回显模式（推荐用于证明）")
-    engine: Literal["auto", "spring", "undertow", "tomcat"] = "auto"
+    engine: Literal[
+        "auto", "spring", "undertow", "tomcat", "jetty",
+        "weblogic", "websphere", "resin", "struts2", "httpserver", "dfs",
+    ] = "auto"
     json_path: str = Field(DEFAULT_JSON_PATH, description="反序列化路径")
     docker_container: str = Field(
         DEFAULT_DOCKER_CONTAINER,

@@ -351,6 +351,33 @@ export async function testCeye(): Promise<CeyeTestResponse> {
   return res.json();
 }
 
+export type EchoEngine =
+  | "auto"
+  | "spring"
+  | "undertow"
+  | "tomcat"
+  | "jetty"
+  | "weblogic"
+  | "websphere"
+  | "resin"
+  | "struts2"
+  | "httpserver"
+  | "dfs";
+
+export const ECHO_ENGINES: { id: EchoEngine; label: string }[] = [
+  { id: "auto", label: "auto" },
+  { id: "spring", label: "spring" },
+  { id: "undertow", label: "undertow" },
+  { id: "tomcat", label: "tomcat" },
+  { id: "jetty", label: "jetty" },
+  { id: "weblogic", label: "weblogic" },
+  { id: "websphere", label: "websphere" },
+  { id: "resin", label: "resin" },
+  { id: "struts2", label: "struts2" },
+  { id: "httpserver", label: "httpserver" },
+  { id: "dfs", label: "dfs" },
+];
+
 export type Poc16723Request = {
   target: string;
   mode?: "http" | "fd";
@@ -358,7 +385,7 @@ export type Poc16723Request = {
   port?: number;
   cmd?: string;
   echo?: boolean;
-  engine?: "auto" | "spring" | "undertow" | "tomcat";
+  engine?: EchoEngine;
   json_path?: string;
   docker_container?: string;
   reuse_type?: string | null;
@@ -424,6 +451,10 @@ export type Poc1247Request = {
   currency_field?: string;
   json_key_with_type?: boolean;
   json_key_as_array?: boolean;
+  echo?: boolean;
+  engine?: EchoEngine;
+  cmd?: string;
+  cmd_header?: string;
   waf_techniques?: string[];
   waf_options?: WafOptions;
   target?: string;
@@ -445,6 +476,12 @@ export type Poc1247Result = {
   notes: string[];
   requires: string[];
   jdk: string;
+  echo?: boolean;
+  engine?: string;
+  cmd_header?: string;
+  class_b64?: string | null;
+  bcel_code?: string | null;
+  echo_output?: string | null;
 };
 
 export async function listPoc1247Gadgets(): Promise<Poc1247Gadget[]> {
@@ -481,13 +518,22 @@ export type Poc1268Request = {
   socket_factory_arg?: string | null;
   wrap_currency?: boolean;
   currency_field?: string;
+  echo?: boolean;
+  engine?: EchoEngine;
+  cmd?: string;
+  cmd_header?: string;
+  attack_base?: string | null;
   waf_techniques?: string[];
   waf_options?: WafOptions;
   target?: string;
   send?: boolean;
 };
 
-export type Poc1268Result = Poc1247Result & { wrap_currency?: boolean };
+export type Poc1268Result = Poc1247Result & {
+  wrap_currency?: boolean;
+  attack_jar_b64?: string | null;
+  attack_xml_b64?: string | null;
+};
 
 export async function listPoc1268Gadgets(): Promise<Poc1268Gadget[]> {
   const res = await apiFetch("/api/poc/1.2.68/gadgets");
@@ -522,6 +568,11 @@ export type Poc1280Request = {
   classpath?: string | null;
   wrap_currency?: boolean;
   currency_field?: string;
+  echo?: boolean;
+  engine?: EchoEngine;
+  cmd?: string;
+  cmd_header?: string;
+  attack_base?: string | null;
   waf_techniques?: string[];
   waf_options?: WafOptions;
   target?: string;
@@ -535,6 +586,8 @@ export type Poc1280Result = Poc1247Result & {
   wrap_currency?: boolean;
   status_codes?: number[];
   response_previews?: string[];
+  attack_jar_b64?: string | null;
+  attack_xml_b64?: string | null;
 };
 
 export async function listPoc1280Gadgets(): Promise<Poc1280Gadget[]> {

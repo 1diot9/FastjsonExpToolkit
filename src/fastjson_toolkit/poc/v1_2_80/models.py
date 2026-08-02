@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 from fastjson_toolkit.waf.models import WafOptions
+
+EchoEngineField = Literal[
+    "auto",
+    "spring",
+    "undertow",
+    "tomcat",
+    "jetty",
+    "weblogic",
+    "websphere",
+    "resin",
+    "struts2",
+    "httpserver",
+    "dfs",
+]
+
 
 
 class Poc1280GenerateOptions(BaseModel):
@@ -38,6 +53,11 @@ class Poc1280GenerateOptions(BaseModel):
         "currency",
         description="Currency MiscCodec 字段：currency 或 currencyCode",
     )
+    echo: bool = Field(False, description="postgresql/jython/groovy 命令回显")
+    engine: EchoEngineField = Field("auto", description="回显引擎")
+    cmd: str = Field("id", description="回显默认命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头")
+    attack_base: Optional[str] = Field(None, description="回显资源托管基址")
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后按顺序叠加的 WAF 变换 id（见 GET /api/waf/techniques）",
@@ -64,6 +84,11 @@ class Poc1280GenerateResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
     requires: list[str] = Field(default_factory=list)
     jdk: str = ""
+    echo: bool = False
+    engine: str = ""
+    cmd_header: str = ""
+    attack_jar_b64: Optional[str] = None
+    attack_xml_b64: Optional[str] = None
 
 
 class Poc1280SendOptions(Poc1280GenerateOptions):
@@ -104,4 +129,10 @@ class Poc1280SendResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
     requires: list[str] = Field(default_factory=list)
     jdk: str = ""
+    echo: bool = False
+    engine: str = ""
+    cmd_header: str = ""
+    attack_jar_b64: Optional[str] = None
+    attack_xml_b64: Optional[str] = None
+    echo_output: Optional[str] = None
     raw: dict[str, Any] = Field(default_factory=dict)

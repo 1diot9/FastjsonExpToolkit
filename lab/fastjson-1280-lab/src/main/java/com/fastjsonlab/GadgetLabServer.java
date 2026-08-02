@@ -47,6 +47,9 @@ public class GadgetLabServer {
     private static final Path ATTACK_DIR = Paths.get("/app/attack");
     private static final AtomicReference<ParserConfig> CFG = new AtomicReference<>();
 
+    /** 供回显 payload 取当前请求（JDK HttpServer 无 Servlet Request）。 */
+    public static final ThreadLocal<HttpExchange> CURRENT_EXCHANGE = new ThreadLocal<>();
+
     public static void main(String[] args) throws Exception {
         int port = Integer.parseInt(System.getenv().getOrDefault("SERVER_PORT", "18080"));
         resetConfig();
@@ -265,12 +268,15 @@ public class GadgetLabServer {
             return;
         }
         String body = readBody(ex);
+        CURRENT_EXCHANGE.set(ex);
         try {
             ParserConfig cfg = CFG.get();
             Object obj = parseWith(cfg, body);
             writeParsed(ex, obj);
         } catch (Throwable t) {
             writeError(ex, t);
+        } finally {
+            CURRENT_EXCHANGE.remove();
         }
     }
 
