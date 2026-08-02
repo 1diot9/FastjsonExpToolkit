@@ -76,7 +76,7 @@ AUTOCLOSEABLE_EXACT = VersionProbe(
     payload='{"@type":"java.lang.AutoCloseable"',
 )
 
-# --- 3. 1.2.83 具体探测 ---
+# --- 4. 1.2.83 具体探测 ---
 PROBE_1_2_83 = VersionProbe(
     id="probe_1_2_83",
     category="exact",
@@ -84,7 +84,7 @@ PROBE_1_2_83 = VersionProbe(
     payload='{"xxx":{"@type":"Test.TestException"}}',
 )
 
-# --- 5. 不出网二分探测 ---
+# --- 6. 不出网二分探测 ---
 OFFLINE_EXCEPTION = VersionProbe(
     id="offline_exception",
     category="offline",
@@ -179,6 +179,7 @@ def offline_probes() -> list[VersionProbe]:
         NEGATIVE_CONTROL,
         AUTOTYPE_CLASS,
         AUTOTYPE_RANDOM,
+        SAFEMODE_STRING,
         AUTOCLOSEABLE_EXACT,
         PROBE_1_2_83,
         *OFFLINE_PROBES,

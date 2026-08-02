@@ -19,6 +19,7 @@ from fastjson_toolkit.version.probes import (
     OFFLINE_EXCEPTION,
     OFFLINE_JDBC,
     PROBE_1_2_83,
+    SAFEMODE_STRING,
     VersionProbe,
     all_version_probes,
     build_dns_version_probes,
@@ -118,6 +119,9 @@ class FastjsonVersionDetector:
 
         methods.append("autotype")
         autotype_enabled = self._probe_autotype(url, evidence)
+
+        methods.append("safemode")
+        safemode_enabled = self._probe_safemode(url, evidence)
 
         methods.append("autoclosable_exact")
         reported_version, reported_note = self._probe_exact(url, evidence)
@@ -231,6 +235,7 @@ class FastjsonVersionDetector:
 
         summary, next_actions = self._build_summary(
             autotype_enabled=autotype_enabled,
+            safemode_enabled=safemode_enabled,
             reported_version=reported_version,
             reported_note=reported_note,
             is_83=is_83,
@@ -244,6 +249,7 @@ class FastjsonVersionDetector:
         return VersionResult(
             target=target,
             autotype_enabled=autotype_enabled,
+            safemode_enabled=safemode_enabled,
             reported_version=reported_version,
             reported_version_note=reported_note,
             is_1_2_83_hint=is_83,
@@ -398,6 +404,46 @@ class FastjsonVersionDetector:
                 errored=rand_errored,
                 matched=["random_autotype_msg"] if rand_err_msg else (["errored"] if rand_errored else ["ok"]),
                 response_excerpt=_excerpt(rand_resp.text),
+                interpretation=interpretation,
+            )
+        )
+        return enabled
+
+    def _probe_safemode(self, url: str, evidence: list[VersionEvidence]) -> Optional[bool]:
+        """SafeMode on → malformed String payload errors; off → usually ok."""
+        try:
+            resp = self._send(url, SAFEMODE_STRING)
+        except Exception as exc:  # noqa: BLE001
+            evidence.append(
+                VersionEvidence(
+                    probe_id=SAFEMODE_STRING.id,
+                    category="safemode",
+                    description="SafeMode 探测失败",
+                    payload=SAFEMODE_STRING.payload,
+                    matched=[f"request_error:{type(exc).__name__}"],
+                    interpretation=str(exc),
+                )
+            )
+            return None
+
+        errored = response_errored(resp)
+        enabled = bool(errored)
+        interpretation = (
+            "SafeMode 疑似开启（java.lang.String\"\"\" 畸形报错）"
+            if enabled
+            else "SafeMode 疑似关闭（java.lang.String\"\"\" 畸形不报错）"
+        )
+        evidence.append(
+            VersionEvidence(
+                probe_id=SAFEMODE_STRING.id,
+                category="safemode",
+                description=SAFEMODE_STRING.description,
+                payload=SAFEMODE_STRING.payload,
+                status_code=resp.status_code,
+                elapsed_ms=round(resp.elapsed_ms, 2),
+                errored=errored,
+                matched=["errored"] if errored else ["ok"],
+                response_excerpt=_excerpt(resp.text),
                 interpretation=interpretation,
             )
         )
@@ -765,6 +811,7 @@ class FastjsonVersionDetector:
         dns_hits: dict[str, bool],
         error_surface: Optional[bool] = True,
         dns_skip_reason: Optional[str] = None,
+        safemode_enabled: Optional[bool] = None,
     ) -> tuple[str, list[str]]:
         parts: list[str] = []
         if version_range:
@@ -785,6 +832,10 @@ class FastjsonVersionDetector:
             parts.append("AutoType 疑似开启")
         elif autotype_enabled is False:
             parts.append("AutoType 疑似关闭")
+        if safemode_enabled is True:
+            parts.append("SafeMode 疑似开启")
+        elif safemode_enabled is False:
+            parts.append("SafeMode 疑似关闭")
         if dns_skip_reason:
             parts.append(dns_skip_reason)
         if dns_hits:
@@ -808,11 +859,13 @@ class FastjsonVersionDetector:
                 "无回显时 1.2.68 与 1.2.80 的 AutoCloseable 不出网表现可能相同；"
                 "请改用报错回显（§2：1.2.68 vs 写死的 1.2.76）确认是否实为 <=1.2.80"
             )
+        if safemode_enabled is True:
+            next_actions.append("SafeMode 开启时 @type 被全面禁止，常规 AutoType 链通常无效")
         if autotype_enabled is True and error_surface is False:
             next_actions.append(
                 "AutoType 开启且无报错回显时，68/80/83 侧信道易混淆；优先找 AT 关闭或有回显的入口"
             )
-        if autotype_enabled is False:
+        if autotype_enabled is False and safemode_enabled is not True:
             next_actions.append("AutoType 关闭时优先考虑 expectClass / 其他绕过面")
         if dns_skip_reason:
             next_actions.append("在设置页配置 CEYE，或填写自定义 DNSLog 域名后再开 DNS")

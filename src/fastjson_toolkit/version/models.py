@@ -23,6 +23,7 @@ class VersionEvidence(BaseModel):
 class VersionResult(BaseModel):
     target: str
     autotype_enabled: Optional[bool] = None
+    safemode_enabled: Optional[bool] = None
     reported_version: Optional[str] = None
     reported_version_note: Optional[str] = None
     is_1_2_83_hint: Optional[bool] = None
