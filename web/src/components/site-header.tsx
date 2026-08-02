@@ -13,6 +13,7 @@ const links = [
   { href: "/poc", label: "PoC" },
   { href: "/waf", label: "WAF" },
   { href: "/lab", label: "靶场" },
+  { href: "/docs", label: "文档" },
   { href: "/settings", label: "设置" },
 ];
 

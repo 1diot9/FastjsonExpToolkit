@@ -4,6 +4,7 @@ import {
   BookOpen,
   Bomb,
   Container,
+  Library,
   PackageSearch,
   ScanSearch,
   Settings,
@@ -133,6 +134,24 @@ export default function Home() {
           <CardContent>
             <Link href="/lab" className={cn(buttonVariants())}>
               打开靶场页
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Library className="size-5" />
+              漏洞分析文档
+            </CardTitle>
+            <CardDescription>
+              Markdown 渲染的探测 / 版本 / 依赖分析笔记。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/docs" className={cn(buttonVariants())}>
+              打开文档
               <ArrowRight className="size-4" data-icon="inline-end" />
             </Link>
           </CardContent>
