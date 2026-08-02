@@ -308,6 +308,11 @@ export default function VersionPage() {
                     AutoType {result.autotype_enabled ? "开" : "关"}
                   </Badge>
                 ) : null}
+                {result.safemode_enabled != null ? (
+                  <Badge variant="outline">
+                    SafeMode {result.safemode_enabled ? "开" : "关"}
+                  </Badge>
+                ) : null}
                 {result.is_1_2_83_hint != null ? (
                   <Badge variant="outline">
                     1.2.83 探针 {result.is_1_2_83_hint ? "不报错" : "报错"}

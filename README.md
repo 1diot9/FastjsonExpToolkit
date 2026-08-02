@@ -11,7 +11,7 @@ Fastjson 识别 / 版本探测 / PoC 工具箱。
 | 能力 | 状态 | 说明 |
 |------|------|------|
 | Fastjson 识别 | ✅ | 报错 / 解析特征 / `$ref` / DNS·CEYE / 与其他 JSON 库区分 |
-| Fastjson 版本探测 | ✅ | AutoType / AutoCloseable 回显 / 不出网二分 / DNSLog |
+| Fastjson 版本探测 | ✅ | AutoType / SafeMode / AutoCloseable 回显 / 不出网二分 / DNSLog |
 | 依赖 / classpath 探测 | ✅ | Character 报错回显（推荐）/ DNS Locale（版本敏感） |
 | Web 识别页 | ✅ | `/detect`，对接真实 API |
 | Web 版本页 | ✅ | `/version`，对接 `/api/version` |
@@ -162,7 +162,7 @@ docker compose down
 
 `POST /api/detect` 返回结构化 `DetectResult`：`is_fastjson` / `confidence` / `primary_guess` / `scores` / `evidence` / `dns_confirmed` / `next_actions` 等。
 
-`POST /api/version` 返回 `VersionResult`：`version_range` / `reported_version` / `autotype_enabled` / `is_1_2_83_hint` / `evidence` / `dns_hits` 等。
+`POST /api/version` 返回 `VersionResult`：`version_range` / `reported_version` / `autotype_enabled` / `safemode_enabled` / `is_1_2_83_hint` / `evidence` / `dns_hits` 等。
 
 `POST /api/deps` 返回 `DepsResult`：`present` / `results` / `method`（`character`|`dns`）/ `notes` 等。推荐 `method=character`（报错回显）；DNS Locale 链版本敏感，本地常无记录。
 
@@ -200,10 +200,11 @@ CLI：`fjtoolkit deps http://127.0.0.1:18080/api/fastjson`
 ## 版本探测原理（摘要）
 
 1. **AutoType**：`java.lang.Class` vs `Random.String` 报错组合判断是否开启  
-2. **AutoCloseable 回显**：残缺 `{"@type":"java.lang.AutoCloseable"`，提取 `fastjson-version`（注意 1.2.76+ 可能写死）  
-3. **1.2.83**：`Test.TestException` 仅在 1.2.83 通常不报错  
-4. **不出网二分**：Exception / AutoCloseable / Class+Jdbc / Jdbc 四探针收敛区间  
-5. **DNSLog**：<=1.2.47 / <=1.2.68 / 单 DNS≈1.2.80 / 双 DNS≈1.2.83
+2. **SafeMode**：`{"zero":{"@type":"java.lang.String"""}}}` 报错≈开启，不报错≈关闭  
+3. **AutoCloseable 回显**：残缺 `{"@type":"java.lang.AutoCloseable"`，提取 `fastjson-version`（注意 1.2.76+ 可能写死）  
+4. **1.2.83**：`Test.TestException` 仅在 1.2.83 通常不报错  
+5. **不出网二分**：Exception / AutoCloseable / Class+Jdbc / Jdbc 四探针收敛区间  
+6. **DNSLog**：<=1.2.47 / <=1.2.68 / 单 DNS≈1.2.80 / 双 DNS≈1.2.83
 
 ## 目录结构
 

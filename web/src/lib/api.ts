@@ -162,6 +162,7 @@ export type VersionEvidence = {
 export type VersionResult = {
   target: string;
   autotype_enabled: boolean | null;
+  safemode_enabled: boolean | null;
   reported_version: string | null;
   reported_version_note: string | null;
   is_1_2_83_hint: boolean | null;

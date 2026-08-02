@@ -41,7 +41,7 @@ Backend (Python)
 | 项 | 说明 |
 |----|------|
 | 识别引擎 | `src/fastjson_toolkit/detect/`：报错、解析特征、`$ref`、与其他库差异探针 |
-| 版本引擎 | `src/fastjson_toolkit/version/`：AutoType / AutoCloseable 回显 / 1.2.83 / 不出网二分 / DNS |
+| 版本引擎 | `src/fastjson_toolkit/version/`：AutoType / SafeMode / AutoCloseable 回显 / 1.2.83 / 不出网二分 / DNS |
 | 依赖引擎 | `src/fastjson_toolkit/deps/`：Character 报错 classpath 探测 + DNS Locale（实验性） |
 | 判定策略 | 仅强特征可判定 Fastjson；差异探针不单独定论，避免 Gson/Hutool 误报 |
 | CEYE DNSLog | `hpdth2.ceye.io` + API 轮询确认出网（`.env` 配置 token） |
@@ -84,7 +84,7 @@ Backend (Python)
 
 ### Phase 2 — 版本识别（已完成）
 
-- AutoType 双探针、AutoCloseable `fastjson-version` 回显、1.2.83 探针
+- AutoType 双探针、SafeMode（`java.lang.String"""`）探针、AutoCloseable `fastjson-version` 回显、1.2.83 探针
 - 不出网二分（Exception / AutoCloseable / Class+Jdbc / Jdbc）
 - 四档区间：`<=1.2.47` / `<=1.2.68` / `<=1.2.80` / `1.2.83`
   - DNSLog 双请求稳分 `1.2.83`；回显 `1.2.68` vs `1.2.76` 分 `<=68` / `<=80`；不出网 `Class+Jdbc` 分 `<=47`

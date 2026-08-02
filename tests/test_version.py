@@ -1,6 +1,12 @@
 from fastjson_toolkit.http.client import HttpResponse
 from fastjson_toolkit.version.detector import FastjsonVersionDetector, response_errored
-from fastjson_toolkit.version.probes import all_version_probes, build_dns_version_probes, validate_dns_host
+from fastjson_toolkit.version.models import VersionEvidence
+from fastjson_toolkit.version.probes import (
+    SAFEMODE_STRING,
+    all_version_probes,
+    build_dns_version_probes,
+    validate_dns_host,
+)
 import pytest
 
 
@@ -144,3 +150,30 @@ def test_echo_176_maps_to_le80_band():
 def test_validate_dns_host_rejects_quotes():
     with pytest.raises(ValueError):
         validate_dns_host('evil".ceye.io')
+
+
+def test_safemode_probe_payload():
+    assert SAFEMODE_STRING.payload == '{"zero":{"@type":"java.lang.String"""}}}'
+    assert SAFEMODE_STRING.id == "safemode_string"
+
+
+def test_probe_safemode_errored_means_on(monkeypatch):
+    det = FastjsonVersionDetector.__new__(FastjsonVersionDetector)
+    evidence: list[VersionEvidence] = []
+
+    monkeypatch.setattr(
+        det,
+        "_send",
+        lambda url, probe: HttpResponse(400, "com.alibaba.fastjson.JSONException", 1.0, {}),
+    )
+    assert det._probe_safemode("http://example/", evidence) is True
+    assert evidence[-1].errored is True
+
+    evidence.clear()
+    monkeypatch.setattr(
+        det,
+        "_send",
+        lambda url, probe: HttpResponse(200, '{"ok":true}', 1.0, {}),
+    )
+    assert det._probe_safemode("http://example/", evidence) is False
+    assert evidence[-1].errored is False

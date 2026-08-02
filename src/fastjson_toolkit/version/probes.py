@@ -4,7 +4,7 @@ Reference: https://mp.weixin.qq.com/s/jbkN86qq9JxkGNOhwv9nxA
 
 Note checklist implemented here:
 1. AutoType: Class vs Random.String
-2. SafeMode: java.lang.String""" 畸形；开启时报错
+2. SafeMode: java.lang.String + 多余引号畸形；开启时报错
 3. AutoCloseable exact: incomplete JSON → fastjson-version（1.2.76+ 常写死 1.2.76）
 4. 1.2.83: Test.TestException 不报错
 5. DNSLog: <=1.2.47 / <=1.2.68 / 双 DNS 分 <=1.2.80 vs 1.2.83
@@ -64,7 +64,7 @@ AUTOTYPE_RANDOM = VersionProbe(
 SAFEMODE_STRING = VersionProbe(
     id="safemode_string",
     category="safemode",
-    description='java.lang.String""" 畸形；SafeMode 开启时报错，关闭时通常不报错',
+    description="java.lang.String + 多余引号畸形；SafeMode 开启时报错，关闭时通常不报错",
     payload='{"zero":{"@type":"java.lang.String"""}}}',
 )
 

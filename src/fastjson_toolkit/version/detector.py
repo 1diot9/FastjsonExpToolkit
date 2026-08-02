@@ -429,9 +429,9 @@ class FastjsonVersionDetector:
         errored = response_errored(resp)
         enabled = bool(errored)
         interpretation = (
-            "SafeMode 疑似开启（java.lang.String\"\"\" 畸形报错）"
+            "SafeMode 疑似开启（String 畸形 payload 报错）"
             if enabled
-            else "SafeMode 疑似关闭（java.lang.String\"\"\" 畸形不报错）"
+            else "SafeMode 疑似关闭（String 畸形 payload 不报错）"
         )
         evidence.append(
             VersionEvidence(

@@ -15,11 +15,13 @@ from fastjson_toolkit.version.probes import (
     OFFLINE_EXCEPTION,
     OFFLINE_JDBC,
     PROBE_1_2_83,
+    SAFEMODE_STRING,
 )
 
 PROBES = [
     AUTOTYPE_CLASS,
     AUTOTYPE_RANDOM,
+    SAFEMODE_STRING,
     AUTOCLOSEABLE_EXACT,
     PROBE_1_2_83,
     OFFLINE_EXCEPTION,
