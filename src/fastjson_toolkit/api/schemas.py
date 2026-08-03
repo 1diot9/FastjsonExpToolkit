@@ -97,6 +97,13 @@ class SettingsResponse(BaseModel):
     ceye_identifier: str = ""
     ceye_domain: str = ""
     env_path: str = ""
+    mcp_http_host: str = "127.0.0.1"
+    mcp_http_port: int = 8100
+    mcp_http_url: str = "http://127.0.0.1:8100/mcp"
+    mcp_http_running: bool = False
+    mcp_http_token_set: bool = False
+    mcp_http_token_masked: str = ""
+    mcp_http_error: str = ""
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -107,6 +114,42 @@ class SettingsUpdateRequest(BaseModel):
         ...,
         min_length=1,
         description="CEYE Identifier 子域名，如 hpdth2 或 hpdth2.ceye.io",
+    )
+
+
+class McpHttpSettingsUpdateRequest(BaseModel):
+    host: str = Field("127.0.0.1", description="MCP HTTP 监听地址")
+    port: int = Field(8100, ge=1, le=65535, description="MCP HTTP 端口")
+    token: Optional[str] = Field(
+        None,
+        description="访问 Token；留空保留原值；客户端用 Authorization: Bearer 或 X-MCP-Token",
+    )
+    clear_token: bool = Field(False, description="清空已保存的 Token")
+
+
+class McpHttpStartRequest(BaseModel):
+    host: Optional[str] = Field(None, description="覆盖监听地址；默认用已保存配置")
+    port: Optional[int] = Field(None, ge=1, le=65535, description="覆盖端口")
+    token: Optional[str] = Field(
+        None, description="覆盖 Token；非空则写入配置后启动"
+    )
+    persist: bool = Field(True, description="是否将本次参数写入 .env")
+
+
+class McpHttpStatusResponse(BaseModel):
+    ok: bool = True
+    message: str = ""
+    running: bool
+    host: str
+    port: int
+    url: str
+    token_set: bool
+    token_masked: str = ""
+    error: str = ""
+    pid: Optional[int] = None
+    cursor_config: dict = Field(
+        default_factory=dict,
+        description="可粘贴到 Cursor mcp.json 的片段",
     )
 
 

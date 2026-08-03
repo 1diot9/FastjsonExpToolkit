@@ -173,7 +173,7 @@ Backend (Python FastAPI)
 1. **前端强制 shadcn**：新 UI 不引入非 shadcn 的平行组件库；样式走项目既有 Tailwind + shadcn 体系（见 `AGENTS.md`）。
 2. **安全使用范围**：仅用于授权测试 / 本地靶场复现。
 3. **密钥**：CEYE token 等只放 `.env`，不入库。
-4. **Agent 友好（次要）**：API 保持结构化 JSON（`is_fastjson` / `confidence` / `evidence` / `next_actions`）；主交付仍是 Web。
+4. **Agent 友好**：API 保持结构化 JSON（`is_fastjson` / `confidence` / `evidence` / `next_actions`）；另提供 **MCP**（`fjtoolkit mcp` stdio + FastAPI `/mcp` Streamable HTTP），工具复用同一套 detect / deps / poc / 文档引擎。
 
 ---
 
@@ -186,12 +186,24 @@ Backend (Python FastAPI)
 ├── src/fastjson_toolkit/        # 后端核心
 │   ├── detect / version / expect / deps
 │   ├── poc/（v1_2_47 / v1_2_68 / v1_2_80 / cve_2026_16723 / getter）
-│   ├── waf / dnslog / http / api / cli
-├── web/                         # Next.js + shadcn
+│   ├── waf / dnslog / http / api / cli / mcp
+├── web/                         # Next.js + shadcn（含 content/docs 漏洞分析文档）
 ├── lab/                         # Docker 靶场（指纹 / 版本矩阵 / 1247 / 1268 / 1280 / 16723）
 ├── tests/                       # pytest 单元测试
 ├── tests/lab/                   # 靶场落盘验证 / 版本矩阵压测 / DNS 探针实验
 └── .env.example                 # CEYE 等配置模板
 ```
 
-下一阶段：通用自定义字节码上传 UI、版本→PoC 推荐工作流，以及 Phase 4 回显 / Phase 5 内存马编排。
+### MCP 工具（摘要）
+
+| 工具 | 作用 |
+|------|------|
+| `detect_pipeline` | 识别 → 版本 → 期望类 |
+| `deps_probe` | 依赖探测 |
+| `poc_catalog` / `poc_run` | PoC 目录与生成/发送 |
+| `poc_script` | 固定原脚本（LLM 自行改）；不传参列目录 |
+| `docs_list` / `docs_get` | 漏洞分析文档 |
+
+HTTP：设置页启停独立服务（`MCP_HTTP_HOST` / `PORT` / `TOKEN`），默认 `127.0.0.1:8100/mcp`。
+
+下一阶段：通用自定义字节码上传 UI、版本→PoC 推荐工作流。

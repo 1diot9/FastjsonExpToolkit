@@ -65,6 +65,13 @@ export type SettingsResponse = {
   ceye_identifier: string;
   ceye_domain: string;
   env_path: string;
+  mcp_http_host: string;
+  mcp_http_port: number;
+  mcp_http_url: string;
+  mcp_http_running: boolean;
+  mcp_http_token_set: boolean;
+  mcp_http_token_masked: string;
+  mcp_http_error: string;
 };
 
 export type SettingsUpdateRequest = {
@@ -83,6 +90,34 @@ export type CeyeTestResponse = {
   domain: string;
   record_count: number;
   message: string;
+};
+
+export type McpHttpStatusResponse = {
+  ok: boolean;
+  message: string;
+  running: boolean;
+  host: string;
+  port: number;
+  url: string;
+  token_set: boolean;
+  token_masked: string;
+  error: string;
+  pid: number | null;
+  cursor_config: Record<string, unknown>;
+};
+
+export type McpHttpSettingsUpdateRequest = {
+  host: string;
+  port: number;
+  token?: string | null;
+  clear_token?: boolean;
+};
+
+export type McpHttpStartRequest = {
+  host?: string | null;
+  port?: number | null;
+  token?: string | null;
+  persist?: boolean;
 };
 
 /** Same-origin proxy first; fall back to direct backend for local dev. */
@@ -345,6 +380,44 @@ export async function updateSettings(
 
 export async function testCeye(): Promise<CeyeTestResponse> {
   const res = await apiFetch("/api/settings/ceye-test", {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function fetchMcpHttpStatus(): Promise<McpHttpStatusResponse> {
+  const res = await apiFetch("/api/settings/mcp");
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function updateMcpHttpSettings(
+  body: McpHttpSettingsUpdateRequest,
+): Promise<McpHttpStatusResponse> {
+  const res = await apiFetch("/api/settings/mcp", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function startMcpHttp(
+  body: McpHttpStartRequest = {},
+): Promise<McpHttpStatusResponse> {
+  const res = await apiFetch("/api/settings/mcp/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function stopMcpHttp(): Promise<McpHttpStatusResponse> {
+  const res = await apiFetch("/api/settings/mcp/stop", {
     method: "POST",
   });
   if (!res.ok) throw new Error(await readError(res));

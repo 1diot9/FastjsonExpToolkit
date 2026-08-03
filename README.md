@@ -20,6 +20,7 @@ Fastjson 识别 / 版本探测 / PoC 工具箱。
 | Web 依赖页 | ✅ | `/deps`，对接 `/api/deps` |
 | Web PoC 页 | ✅ | `/poc`，对接 `/api/poc/cve-2026-16723` |
 | WAF 绕过 | ✅ | unicode/hex/`\u+`、多逗号、key `_`/`-`、填充、URL 编码；CLI / API / Web `/waf` |
+| MCP（Agent） | ✅ | stdio（`fjtoolkit mcp`）+ 设置页启停 HTTP（地址 / Token） |
 | Web 设置页 | ✅ | `/settings`，配置 CEYE Token 与 Identifier |
 | Docker 靶场 | ✅ | 多解析器对照（Fastjson / Jackson / Gson / Hutool / org.json） |
 | CVE-2026-16723（1.2.83）证明 PoC | ✅ | jar:http / fd-cache；CLI / API / Web `/poc`；Undertow 靶场 |
@@ -91,6 +92,7 @@ chmod +x scripts/start.sh scripts/stop.sh
 | Swagger UI | 后端 `/api/swagger` |
 | ReDoc | 后端 `/api/redoc` |
 | OpenAPI JSON | 后端 `/api/openapi.json` |
+| MCP（Streamable HTTP） | 设置页启停，默认 `http://127.0.0.1:8100/mcp`（也可 `fjtoolkit mcp --http`） |
 
 日志目录：`.runtime/logs/`。Windows 上若默认 `8000` 落在 Hyper-V 排除端口段（`WinError 10013`），`start.bat` / `start.ps1` 会自动改用可用端口，并把 `API_ORIGIN` 传给前端。也可手动指定：`$env:BACKEND_PORT=8888`。
 
@@ -348,6 +350,57 @@ Web：`/poc` →「≤1.2.80 Exception」Tab。API：`GET/POST /api/poc/1.2.80`�
 `POST /api/deps` 返回 `DepsResult`：`present` / `results` / `method`（`character`|`dns`）/ `notes` 等。推荐 `method=character`（报错回显）；DNS Locale 链版本敏感，本地常无记录。
 
 `POST /api/expect` 返回 `ExpectClassResult`：`has_expect_class` / `expect_not_map` / `version_lt_1_2_68_hint` / `evidence` 等。请传入接近业务的 `base_body`（原始请求 JSON）。
+
+## MCP（Agent 工具）
+
+与 REST 同源引擎，供 Cursor 等 MCP 客户端调用。
+
+| 工具 | 说明 |
+|------|------|
+| `detect_pipeline` | 识别 → 版本 → 期望类 |
+| `deps_probe` | 依赖探测（默认 `character` 报错回显） |
+| `poc_catalog` | gadget / 回显引擎 / WAF 技巧目录 |
+| `poc_run` | 生成或发送 PoC |
+| `poc_script` | 返回固定原脚本（LLM 自行按环境修改）；不传参则列目录 |
+| `docs_list` | 漏洞文档标题与摘要 |
+| `docs_get` | 按 slug 取 Markdown 正文 |
+
+**stdio**
+
+```bash
+pip install -e .
+fjtoolkit mcp
+```
+
+Cursor `mcp.json` 示例：
+
+```json
+{
+  "mcpServers": {
+    "fastjson-toolkit": {
+      "command": "fjtoolkit",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**HTTP（推荐在 Web 设置页启停）**
+
+1. 打开 `/settings` →「MCP HTTP」
+2. 填写 Host / 端口 / 请求鉴权 Token，点「启动服务」
+3. 「复制 Cursor 配置」粘贴到 `mcp.json`
+
+也可命令行：
+
+```bash
+fjtoolkit mcp --http --host 127.0.0.1 --port 8100 --token your-secret
+```
+
+配置写入 `.env`：`MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_TOKEN`。
+客户端通过 `Authorization: Bearer <token>` 或 `X-MCP-Token` 传递 Token。
+
+文档目录默认读取仓库 `web/content/docs/`；也可设环境变量 `FASTJSON_DOCS_DIR`。
 
 ## 期望类探测原理（摘要）
 

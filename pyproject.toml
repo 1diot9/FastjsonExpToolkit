@@ -16,6 +16,7 @@ dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
   "scalar-fastapi>=1.8.0",
+  "mcp>=1.9.0",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +30,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "fastjson_toolkit.poc.memshell" = ["jars/*"]
+"fastjson_toolkit.poc.scripts" = ["templates/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

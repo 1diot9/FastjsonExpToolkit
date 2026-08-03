@@ -1010,6 +1010,50 @@ def waf_cmd(
     raise typer.Exit(0)
 
 
+@app.command("mcp")
+def mcp_cmd(
+    http: bool = typer.Option(
+        False,
+        "--http",
+        help="启动独立 Streamable HTTP（默认 stdio）；也可用设置页启停",
+    ),
+    host: str = typer.Option("127.0.0.1", "--host", help="HTTP 监听地址"),
+    port: int = typer.Option(8100, "--port", help="HTTP 端口"),
+    token: Optional[str] = typer.Option(
+        None,
+        "--token",
+        help="访问 Token（Authorization: Bearer / X-MCP-Token）；默认读 MCP_HTTP_TOKEN",
+    ),
+) -> None:
+    """启动 MCP Server（默认 stdio；``--http`` 为独立 HTTP 服务）。"""
+    load_dotenv()
+    if not http:
+        from fastjson_toolkit.mcp import run_stdio
+
+        run_stdio()
+        return
+
+    from fastjson_toolkit.mcp.http_runtime import (
+        build_mcp_http_app,
+        load_mcp_http_config,
+        mcp_public_url,
+        save_mcp_http_config,
+    )
+    import uvicorn
+
+    cfg_host, cfg_port, cfg_token = load_mcp_http_config()
+    bind_host = host or cfg_host
+    bind_port = port or cfg_port
+    bind_token = (token if token is not None else cfg_token) or ""
+    save_mcp_http_config(host=bind_host, port=bind_port, token=bind_token or None)
+    app = build_mcp_http_app(token=bind_token)
+    rprint(
+        f"[cyan]MCP HTTP[/cyan] {mcp_public_url(bind_host, bind_port)}"
+        + ("（已启用 Token）" if bind_token else "（无 Token）")
+    )
+    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+
+
 @app.command("serve")
 def serve_cmd(
     host: str = typer.Option("127.0.0.1", "--host"),
@@ -1020,7 +1064,7 @@ def serve_cmd(
         help="监听源码变更并自动重启（默认开启）",
     ),
 ) -> None:
-    """启动 Web 后端 API（FastAPI / Uvicorn）。"""
+    """启动 Web 后端 API（FastAPI / Uvicorn）。MCP HTTP 请在设置页或 ``fjtoolkit mcp --http`` 启停。"""
     load_dotenv()
     import uvicorn
     from pathlib import Path

@@ -1,5 +1,39 @@
 # FastjsonExpToolkit — Agent 约定
 
+## 仓库布局（scripts vs tests）
+
+| 目录 | 放什么 | 不要放 |
+|------|--------|--------|
+| `scripts/` | 一键启停 Web：`start.*` / `stop.*` | Python 测试、靶场验证、一次性探针 |
+| `tests/` | pytest 单元测试：`test_*.py`（`pytest -q`） | 启停脚本 |
+| `tests/lab/` | 需本地 Docker 靶场的**手动**验证 / 压测 / DNS 探针脚本 | 会被 `pytest` 默认收集的 `test_*.py` |
+
+`tests/lab/` 命名刻意避开 `test_*.py` / `*_test.py`，避免被 pytest 自动收集。在仓库根目录、已 `pip install -e ".[dev]"` 后运行，例如：
+
+```powershell
+python tests/lab/lab_test_1247_gadgets.py
+python tests/lab/lab_test_1268_gadgets.py
+python tests/lab/lab_test_1280_gadgets.py
+```
+
+新增「对着 lab 跑一遍证明」类脚本 → 放 `tests/lab/`，并同步改 `README.md` / `lab/**/README.md` 引用；**不要**再往 `scripts/` 塞 `.py`。
+
+后端探测逻辑在 `src/fastjson_toolkit/`（`detect` / `version` / `expect` / `deps` / `poc`）；Web 页面对接 API 时复用其结构化输出，勿在前端重写探针。
+
+### MCP（Agent 工具调用）
+
+实现位于 `src/fastjson_toolkit/mcp/`，与 REST 同源：
+
+| 传输 | 入口 |
+|------|------|
+| stdio | `fjtoolkit mcp` |
+| HTTP | 设置页启停，或 `fjtoolkit mcp --http`（默认 `127.0.0.1:8100/mcp`，可配 Token） |
+
+工具：`detect_pipeline`、`deps_probe`、`poc_catalog`、`poc_run`、`poc_script`、`docs_list`、`docs_get`。
+`poc_script` 只返回固定原脚本（如 `1.2.68/io_read_error`），由 LLM 按环境自行改；不传参可列目录。文档读 `web/content/docs/`（可用 `FASTJSON_DOCS_DIR` 覆盖）。细节见 `README.md`「MCP」节。
+
+---
+
 ## Web 前端：shadcn/ui
 
 文档：https://ui.shadcn.com/
@@ -108,5 +142,3 @@ cd web
 npm install
 npm run dev
 ```
-
-后端探测逻辑在 `src/fastjson_toolkit/`（`detect` / `version` / `expect` / `deps`）；Web 页面对接 API 时复用其结构化输出（如 `DetectResult` / `ExpectClassResult`），勿在前端重写探针。

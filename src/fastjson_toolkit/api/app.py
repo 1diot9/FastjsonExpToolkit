@@ -16,6 +16,9 @@ from fastjson_toolkit.api.schemas import (
     HealthResponse,
     LabStartRequest,
     LabStopRequest,
+    McpHttpSettingsUpdateRequest,
+    McpHttpStartRequest,
+    McpHttpStatusResponse,
     MemShellGenerateRequest,
     Poc1247Request,
     Poc1268Request,
@@ -83,12 +86,23 @@ FastjsonExpToolkit 后端 API：识别、版本探测、期望类探测、依赖
 | `/api/swagger` | Swagger UI |
 | `/api/redoc` | ReDoc |
 | `/api/openapi.json` | OpenAPI JSON |
+| MCP HTTP | 设置页启停独立服务（默认 `127.0.0.1:8100/mcp`）；stdio：`fjtoolkit mcp` |
 """
 
 
+def _cursor_mcp_config(url: str, token: str) -> dict[str, Any]:
+    entry: dict[str, Any] = {"url": url}
+    if token:
+        entry["headers"] = {"Authorization": f"Bearer {token}"}
+    return {"mcpServers": {"fastjson-toolkit-http": entry}}
+
+
 def _settings_response() -> SettingsResponse:
+    from fastjson_toolkit.mcp.http_runtime import get_mcp_http_runtime
+
     cfg = CeyeConfig.from_env()
     env_path = resolve_dotenv_path()
+    mcp = get_mcp_http_runtime().status()
     if cfg is None:
         return SettingsResponse(
             ceye_token_set=False,
@@ -96,6 +110,13 @@ def _settings_response() -> SettingsResponse:
             ceye_identifier="",
             ceye_domain="",
             env_path=str(env_path),
+            mcp_http_host=mcp.host,
+            mcp_http_port=mcp.port,
+            mcp_http_url=mcp.url,
+            mcp_http_running=mcp.running,
+            mcp_http_token_set=mcp.token_set,
+            mcp_http_token_masked=mcp.token_masked,
+            mcp_http_error=mcp.error,
         )
     try:
         identifier, domain = normalize_ceye_identifier(cfg.domain)
@@ -107,6 +128,33 @@ def _settings_response() -> SettingsResponse:
         ceye_identifier=identifier,
         ceye_domain=domain,
         env_path=str(env_path),
+        mcp_http_host=mcp.host,
+        mcp_http_port=mcp.port,
+        mcp_http_url=mcp.url,
+        mcp_http_running=mcp.running,
+        mcp_http_token_set=mcp.token_set,
+        mcp_http_token_masked=mcp.token_masked,
+        mcp_http_error=mcp.error,
+    )
+
+
+def _mcp_status_response(message: str = "") -> McpHttpStatusResponse:
+    from fastjson_toolkit.mcp.http_runtime import get_mcp_http_runtime, load_mcp_http_config
+
+    st = get_mcp_http_runtime().status()
+    _, _, token = load_mcp_http_config()
+    return McpHttpStatusResponse(
+        ok=True,
+        message=message,
+        running=st.running,
+        host=st.host,
+        port=st.port,
+        url=st.url,
+        token_set=st.token_set,
+        token_masked=st.token_masked,
+        error=st.error,
+        pid=st.pid,
+        cursor_config=_cursor_mcp_config(st.url, token if st.running else token),
     )
 
 
@@ -194,13 +242,7 @@ def create_app() -> FastAPI:
         return SettingsUpdateResponse(
             ok=True,
             message=f"已写入 {env_path}",
-            settings=SettingsResponse(
-                ceye_token_set=True,
-                ceye_token_masked=mask_secret(token),
-                ceye_identifier=identifier,
-                ceye_domain=domain,
-                env_path=str(env_path),
-            ),
+            settings=_settings_response(),
         )
 
     @app.post(
@@ -223,6 +265,77 @@ def create_app() -> FastAPI:
             "record_count": len(records),
             "message": "CEYE API 可用",
         }
+
+    @app.get(
+        "/api/settings/mcp",
+        response_model=McpHttpStatusResponse,
+        tags=["settings"],
+        summary="MCP HTTP 状态",
+    )
+    def mcp_http_status() -> McpHttpStatusResponse:
+        return _mcp_status_response()
+
+    @app.put(
+        "/api/settings/mcp",
+        response_model=McpHttpStatusResponse,
+        tags=["settings"],
+        summary="保存 MCP HTTP 配置（地址 / Token）",
+    )
+    def mcp_http_save(req: McpHttpSettingsUpdateRequest) -> McpHttpStatusResponse:
+        from fastjson_toolkit.mcp.http_runtime import save_mcp_http_config
+
+        try:
+            host, port, token = save_mcp_http_config(
+                host=req.host,
+                port=req.port,
+                token=req.token,
+                clear_token=req.clear_token,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _mcp_status_response(
+            message=f"已保存 MCP HTTP 配置 {host}:{port}"
+            + ("（已设 Token）" if token else "（无 Token）")
+        )
+
+    @app.post(
+        "/api/settings/mcp/start",
+        response_model=McpHttpStatusResponse,
+        tags=["settings"],
+        summary="启动 MCP HTTP 服务",
+    )
+    def mcp_http_start(req: McpHttpStartRequest = McpHttpStartRequest()) -> McpHttpStatusResponse:
+        from fastjson_toolkit.mcp.http_runtime import get_mcp_http_runtime
+
+        try:
+            st = get_mcp_http_runtime().start(
+                host=req.host,
+                port=req.port,
+                token=req.token,
+                persist=req.persist,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"启动失败: {exc}") from exc
+        return _mcp_status_response(message=f"MCP HTTP 已启动：{st.url}")
+
+    @app.post(
+        "/api/settings/mcp/stop",
+        response_model=McpHttpStatusResponse,
+        tags=["settings"],
+        summary="停止 MCP HTTP 服务",
+    )
+    def mcp_http_stop() -> McpHttpStatusResponse:
+        from fastjson_toolkit.mcp.http_runtime import get_mcp_http_runtime
+
+        try:
+            get_mcp_http_runtime().stop()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _mcp_status_response(message="MCP HTTP 已停止")
 
     @app.get(
         "/api/probes",
