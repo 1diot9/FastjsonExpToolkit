@@ -12,19 +12,29 @@ from fastjson_toolkit import __version__
 from fastjson_toolkit.mcp import tools_impl as tools
 
 PocFamily = Literal["1.2.47", "1.2.68", "1.2.80", "cve-2026-16723"]
-DepsMethod = Literal["character", "dns"]
+DepsMethod = Literal["character", "class", "dns"]
 
 INSTRUCTIONS = """
-FastjsonExpToolkit MCP：授权测试 / 本地靶场复现。
+FastjsonExpToolkit MCP：授权测试 / 真实环境 Fastjson 利用辅助（与 REST 同源）。
+
+重要契约：
+- target 必须是 JSON 反序列化 POST 点（例 http://127.0.0.1:18268/api/fastjson）。
+- 站点根路径 / 常 404，不等于「非 Fastjson」；detect_pipeline 会尝试 /api/health 与常见路径。
+- SafeMode 仅为低置信启发式，须与 AutoCloseable 交叉校验；AutoType 关闭 ≠ SafeMode。
+- deps_probe(method=character) 会自动校准：AutoType 关闭时改用 Class MiscCodec（类名回显 / null）。
+- poc_run io_read_error：options.read_length + send=true 才会逐字节爆破，结果在 read_bytes/read_content。
+- 命中判定含 HTTP≥400、响应 "bOM"/"BOM"、或 charSequence（本仓库靶场多为 200+bOM）。
+- 本地靶场：18068=版本矩阵（瘦依赖）；18268=1.2.68 gadget（含 commons-io）；先看 health.deps / deps_probe。
 
 推荐工作流：
 1. detect_pipeline(target) — 识别 → 版本 → 期望类（DNS/CEYE 读项目 .env）
-2. deps_probe(target) — 有报错回显时探测依赖（method=character）
-3. poc_catalog / poc_run — 生成或发送 PoC
-4. poc_script — 取固定原脚本（如 1.2.68/io_read_error），由 LLM 按环境自行修改
+2. deps_probe(target) — 依赖探测（character 自动降级 class；无回显可试 dns）
+3. poc_catalog / poc_run — 生成或发送 PoC（注意 gadget.requires）
+4. poc_script — 取固定原脚本（如 1.2.68/io_read_error）按环境改命中特征
 5. docs_list → docs_get(slug) — 先看标题摘要，再读正文
 
 CEYE：在 Web 设置页或 .env 配置 CEYE_TOKEN / CEYE_DOMAIN，工具自动使用，勿在参数里传 token。
+next_actions 均为可直接调用的工具提示，不要打开 Web 页面路径。
 """.strip()
 
 
@@ -41,8 +51,10 @@ def create_mcp(*, streamable_http_path: str = "/") -> FastMCP:
         name="detect_pipeline",
         description=(
             "Fastjson 探测流水线：识别 →（若为 Fastjson）版本 → 期望类。"
-            "非 Fastjson 时跳过后续步骤。返回 detect/version/expect 聚合 JSON。"
-            "DNS 探针默认开启；CEYE token/域名读项目 .env（设置页可配），无需传入。"
+            "target 应为反序列化 POST URL；若传入站点根路径，会尝试 /api/health "
+            "与 /api/fastjson 等常见路径。非 Fastjson 时跳过后续步骤。"
+            "返回 detect/version/expect；detect.target 可能是解析后的反序列化点。"
+            "DNS 探针默认开启；CEYE 读 .env。SafeMode 字段为低置信，已与 AutoCloseable 交叉校验。"
         ),
     )
     def detect_pipeline(
@@ -50,7 +62,8 @@ def create_mcp(*, streamable_http_path: str = "/") -> FastMCP:
             str,
             Field(
                 description=(
-                    "目标反序列化 URL，如 http://127.0.0.1:18247/api/fastjson。"
+                    "目标反序列化 URL，如 http://127.0.0.1:18268/api/fastjson。"
+                    "也可传 http://host:port/ ，工具会尝试发现 /api/fastjson。"
                     "必填。"
                 )
             ),
@@ -129,7 +142,8 @@ def create_mcp(*, streamable_http_path: str = "/") -> FastMCP:
         name="deps_probe",
         description=(
             "Fastjson 依赖 / classpath 探测。"
-            "有报错回显时用 method=character（默认）；"
+            "method=character（默认）会先校准：AutoType 关闭时自动改用 Class MiscCodec"
+            "（类存在回显类名，不存在为 null）；也可显式 method=class。"
             "无回显可试 method=dns（CEYE 读 .env）。"
             "可用 classes / categories 缩小扫描范围。"
         ),
@@ -137,14 +151,15 @@ def create_mcp(*, streamable_http_path: str = "/") -> FastMCP:
     def deps_probe(
         target: Annotated[
             str,
-            Field(description="目标反序列化 URL。必填。"),
+            Field(description="目标反序列化 URL（与 detect 相同点）。必填。"),
         ],
         method: Annotated[
             DepsMethod,
             Field(
                 description=(
-                    "探测方法：character=报错回显字符侧信道（推荐，默认）；"
-                    "dns=Locale+Inet4 DNS 侧信道（需 .env 中 CEYE，版本敏感）。"
+                    "探测方法：character=报错侧信道并自动降级 Class（默认）；"
+                    "class=强制 Class MiscCodec（AutoType 关闭推荐）；"
+                    "dns=Locale+Inet4（需 .env 中 CEYE，版本敏感）。"
                 )
             ),
         ] = "character",
@@ -303,9 +318,12 @@ def create_mcp(*, streamable_http_path: str = "/") -> FastMCP:
             Field(
                 description=(
                     "其余 PoC 字段，随 family 变化；常用："
-                    "gadget（必选之一，见 poc_catalog）、"
+                    "gadget（必选之一，见 poc_catalog，注意 requires）、"
                     "jndi_url / bcel_code / class_b64（1.2.47）、"
                     "file / content / url / source（1.2.68 文件类）、"
+                    "read_length / read_charset / bom_bytes / guess_byte"
+                    "（1.2.68 io_read_error：send=true 且 read_length≥1 时逐字节爆破，"
+                    "命中=HTTP≥400 或响应含 bOM/BOM/charSequence）、"
                     "preset=auto|custom|touch|exec|echo|memshell、"
                     "echo/engine/cmd/cmd_header、memshell 与 ms_*、"
                     "mode/host/port（cve-2026-16723）、"

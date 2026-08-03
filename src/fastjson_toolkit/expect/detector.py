@@ -274,15 +274,28 @@ class FastjsonExpectClassDetector:
 
         next_actions: list[str] = []
         if has_expect_class is True:
-            next_actions.append("存在期望类时优先评估 expectClass / 高版本利用面（需授权）")
-            next_actions.append("可打开版本页确认是否 ≥1.2.68，避免 Feature 探针误判")
+            next_actions.append(
+                "存在期望类：poc_run(..., expect_bypass=true) 或套 Currency / 双 @type expectClass"
+            )
+            next_actions.append(
+                "detect_pipeline / version 确认是否 ≥1.2.68，避免 Feature 探针误判"
+            )
         elif has_expect_class is False and version_lt_1_2_68_hint:
-            next_actions.append("Feature 类可能不存在：结合 /version 确认是否 <1.2.68")
-            next_actions.append("无期望类时，AutoType 关闭场景下可继续依赖/版本侧信道")
+            next_actions.append(
+                "Feature 类可能不存在：结合 version 结果确认是否 <1.2.68"
+            )
+            next_actions.append(
+                "无期望类时，AutoType 关闭场景下可继续 deps_probe / 版本侧信道"
+            )
         elif has_expect_class is False:
-            next_actions.append("无期望类（或 Map）时，经典 @type gadget 面更大；请先确认 AutoType/SafeMode")
+            next_actions.append(
+                "无期望类（或 Map）时经典 @type gadget 面更大；先确认 AutoType；"
+                "SafeMode 须与 AutoCloseable 交叉校验"
+            )
         else:
-            next_actions.append("更换合法业务 base_body 后重测；确认端点会回显解析错误")
+            next_actions.append(
+                "更换合法业务 base_body 后重测；确认端点会回显解析错误"
+            )
         if nested_err:
             next_actions.append("目标似乎拒绝空键语法，可仅参考 Feature 探针并人工复核")
         return "；".join(parts), next_actions

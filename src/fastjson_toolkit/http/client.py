@@ -47,6 +47,15 @@ class HttpClient:
             headers={k: v for k, v in resp.headers.items()},
         )
 
+    def get_raw(self, url: str) -> HttpResponse:
+        resp = self._client.get(url, headers=dict(self._headers))
+        return HttpResponse(
+            status_code=resp.status_code,
+            text=resp.text,
+            elapsed_ms=resp.elapsed.total_seconds() * 1000.0,
+            headers={k: v for k, v in resp.headers.items()},
+        )
+
     def close(self) -> None:
         self._client.close()
 

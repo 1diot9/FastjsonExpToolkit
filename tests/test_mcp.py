@@ -109,6 +109,44 @@ def test_detect_pipeline_runs_version_and_expect() -> None:
     assert any("expect_bypass" in a for a in out["next_actions"])
 
 
+def test_poc_run_1268_passes_read_length() -> None:
+    captured: dict = {}
+
+    def fake_run(opts):  # noqa: ANN001
+        captured["read_length"] = opts.read_length
+        captured["read_charset"] = opts.read_charset
+        captured["send"] = opts.send
+        return MagicMock(
+            model_dump=lambda mode="json": {
+                "read_content": "FLAG",
+                "read_bytes": [70],
+                "status_code": 200,
+            }
+        )
+
+    with (
+        patch("fastjson_toolkit.mcp.tools_impl.get_poc_1268_gadget") as get_g,
+        patch("fastjson_toolkit.mcp.tools_impl.run_poc_1268", side_effect=fake_run),
+    ):
+        get_g.return_value = MagicMock(requires=("commons-io",))
+        out = tools_impl.poc_run(
+            "1.2.68",
+            send=True,
+            target="http://127.0.0.1:18268/api/fastjson",
+            options={
+                "gadget": "io_read_error",
+                "url": "file:///tmp/x",
+                "read_length": 16,
+                "read_charset": "lower",
+            },
+        )
+    assert out["ok"] is True
+    assert captured["read_length"] == 16
+    assert captured["read_charset"] == "lower"
+    assert captured["send"] is True
+    assert out["result"]["read_content"] == "FLAG"
+
+
 def test_poc_run_expect_bypass_maps_1247() -> None:
     captured: dict = {}
 

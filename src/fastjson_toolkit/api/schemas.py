@@ -44,7 +44,10 @@ class DepsRequest(BaseModel):
     target: str = Field(..., description="目标 URL")
     method: str = Field(
         "character",
-        description="探测方法：character（报错回显，推荐）或 dns（Locale+Inet4，版本敏感）",
+        description=(
+            "探测方法：character（默认，失败时自动降级 Class MiscCodec）、"
+            "class（AutoType 关闭推荐）、dns（Locale+Inet4，版本敏感）"
+        ),
     )
     classes: list[str] = Field(
         default_factory=list,

@@ -10,9 +10,15 @@ from urllib.parse import urlparse
 from fastjson_toolkit.deps.catalog import DepEntry, default_catalog
 from fastjson_toolkit.deps.models import DepHit, DepsResult
 from fastjson_toolkit.deps.probes import (
+    CANARY_ABSENT_CLASS,
+    CANARY_PRESENT_CLASS,
     character_payload,
+    class_payload,
     dns_locale_payload,
+    response_indicates_character_broken,
     response_indicates_class_absent,
+    response_indicates_class_loaded,
+    response_indicates_class_not_loaded,
     response_indicates_class_present,
 )
 from fastjson_toolkit.dnslog import CeyeClient, CeyeConfig
@@ -89,25 +95,126 @@ class FastjsonDepsDetector:
             catalog = [known[c] if c in known else DepEntry(clazz=c, description=c) for c in wanted]
 
         method_norm = (method or "character").strip().lower()
-        if method_norm not in ("character", "dns"):
+        if method_norm not in ("character", "class", "dns"):
             method_norm = "character"
 
         notes: list[str] = []
-        if method_norm == "character":
-            notes.append(
-                "Character 探针依赖响应回显：类存在 → can not cast to char；"
-                "明确不存在 → No message available / autoType is not support 等；"
-                "其余记为 unknown（静默目标勿当 absent）。"
-            )
-        else:
+        if method_norm == "dns":
             notes.append(
                 "DNS Locale 探针版本与 autoType 敏感，本地靶场经常无 DNS；"
-                "若失败请改用 character 方法。"
+                "若失败请改用 character / class 方法。"
             )
-
-        if method_norm == "dns":
             return self._scan_dns(url, catalog, notes)
+        if method_norm == "class":
+            notes.append(
+                "Class MiscCodec 探针：类存在 → 响应回显类名字符串；不存在 → null。"
+                "适用于多数 AutoType 关闭场景。"
+            )
+            return self._scan_class(url, catalog, notes)
+        # character：先校准，AutoType 关闭时自动降级到 Class 探针
+        notes.append(
+            "Character 探针依赖 AutoType/MiscCodec 畸形路径："
+            "类存在 → can not cast to char；"
+            "明确不存在 → No message available / autoType is not support 等。"
+        )
+        return self._scan_character_auto(url, catalog, notes)
+
+    def _post(self, url: str, payload: str):
+        return self.client.post_raw(url, payload, self.content_type)
+
+    def _calibrate_error_oracle(self, url: str, notes: list[str]) -> str:
+        """Return ``character`` / ``class`` / ``none`` after canary probes."""
+        char_present_payload = character_payload(CANARY_PRESENT_CLASS)
+        char_absent_payload = character_payload(CANARY_ABSENT_CLASS)
+        try:
+            present_resp = self._post(url, char_present_payload)
+            absent_resp = self._post(url, char_absent_payload)
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"Character 校准请求失败: {type(exc).__name__}: {exc}")
+            present_resp = absent_resp = None
+
+        if present_resp is not None and absent_resp is not None:
+            present_ok = response_indicates_class_present(present_resp.text or "")
+            absent_cast = response_indicates_class_present(absent_resp.text or "")
+            if present_ok and not absent_cast:
+                notes.append("校准：Character 报错侧信道可用（canary String 命中 cast）")
+                return "character"
+            if response_indicates_character_broken(
+                present_resp.text or ""
+            ) or response_indicates_character_broken(absent_resp.text or ""):
+                notes.append(
+                    "校准：Character 探针触发 not close json text / 语法错误，"
+                    "典型于 AutoType 关闭；改用 Class MiscCodec 探针"
+                )
+
+        try:
+            class_present = self._post(url, class_payload(CANARY_PRESENT_CLASS))
+            class_absent = self._post(url, class_payload(CANARY_ABSENT_CLASS))
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"Class 校准请求失败: {type(exc).__name__}: {exc}")
+            return "none"
+
+        if response_indicates_class_loaded(
+            class_present.text or "", CANARY_PRESENT_CLASS
+        ) and response_indicates_class_not_loaded(
+            class_absent.text or "", CANARY_ABSENT_CLASS
+        ):
+            notes.append(
+                "校准：Class MiscCodec 可用（String 回显类名，缺失类 → null）"
+            )
+            return "class"
+
+        notes.append(
+            "校准：Character 与 Class 探针均未建立可靠 miss/hit 基线；"
+            "结果可能大量 unknown"
+        )
+        return "none"
+
+    def _scan_character_auto(
+        self, url: str, catalog: list[DepEntry], notes: list[str]
+    ) -> DepsResult:
+        oracle = self._calibrate_error_oracle(url, notes)
+        if oracle == "class":
+            return self._scan_class(url, catalog, notes)
+        if oracle == "none":
+            notes.append("仍按 Character 模板扫描（无可靠基线，请人工核对响应）")
         return self._scan_character(url, catalog, notes)
+
+    def _judge_character(self, text: str) -> tuple[str, list[str]]:
+        present = response_indicates_class_present(text)
+        matched: list[str] = []
+        if present:
+            matched.append("can not cast to char")
+            return "present", matched
+        if response_indicates_character_broken(text):
+            matched.append("not close json text")
+            return "unknown", matched
+        if response_indicates_class_absent(text):
+            lower = text.lower()
+            if "no message available" in lower:
+                matched.append("No message available")
+            elif "autotype is not support" in lower:
+                matched.append("autoType is not support")
+            else:
+                matched.append("class not found")
+            return "absent", matched
+        return "unknown", matched
+
+    def _judge_class(self, text: str, clazz: str) -> tuple[str, list[str]]:
+        matched: list[str] = []
+        if response_indicates_class_loaded(text, clazz):
+            matched.append("class_name_echo")
+            return "present", matched
+        if response_indicates_class_not_loaded(text, clazz):
+            body = (text or "").strip().lower()
+            if body in ("null", ""):
+                matched.append("null")
+            elif response_indicates_class_absent(text):
+                matched.append("class not found")
+            else:
+                matched.append("not_loaded")
+            return "absent", matched
+        return "unknown", matched
 
     def _scan_character(
         self, url: str, catalog: list[DepEntry], notes: list[str]
@@ -117,7 +224,7 @@ class FastjsonDepsDetector:
         def _one(entry: DepEntry) -> DepHit:
             payload = character_payload(entry.clazz)
             try:
-                resp = self.client.post_raw(url, payload, self.content_type)
+                resp = self._post(url, payload)
             except Exception as exc:  # noqa: BLE001
                 return DepHit(
                     clazz=entry.clazz,
@@ -129,23 +236,7 @@ class FastjsonDepsDetector:
                     error=f"{type(exc).__name__}: {exc}",
                 )
             text = resp.text or ""
-            present = response_indicates_class_present(text)
-            matched: list[str] = []
-            if present:
-                matched.append("can not cast to char")
-                status = "present"
-            elif response_indicates_class_absent(text):
-                lower = text.lower()
-                if "no message available" in lower:
-                    matched.append("No message available")
-                elif "autotype is not support" in lower:
-                    matched.append("autoType is not support")
-                else:
-                    matched.append("class not found")
-                status = "absent"
-            else:
-                # Silent / non-Fastjson / unexpected page — do not claim absence.
-                status = "unknown"
+            status, matched = self._judge_character(text)
             return DepHit(
                 clazz=entry.clazz,
                 description=entry.description,
@@ -171,7 +262,59 @@ class FastjsonDepsDetector:
                     by_class[entry.clazz] = fut.result()
                 results = [by_class[e.clazz] for e in catalog]
 
-        return self._finalize(url, "character", results, notes, dns_filter=None, dns_records=[])
+        return self._finalize(
+            url, "character", results, notes, dns_filter=None, dns_records=[]
+        )
+
+    def _scan_class(
+        self, url: str, catalog: list[DepEntry], notes: list[str]
+    ) -> DepsResult:
+        results: list[DepHit] = []
+
+        def _one(entry: DepEntry) -> DepHit:
+            payload = class_payload(entry.clazz)
+            try:
+                resp = self._post(url, payload)
+            except Exception as exc:  # noqa: BLE001
+                return DepHit(
+                    clazz=entry.clazz,
+                    description=entry.description,
+                    category=entry.category,
+                    status="error",
+                    method="class",
+                    payload=payload,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            text = resp.text or ""
+            status, matched = self._judge_class(text, entry.clazz)
+            return DepHit(
+                clazz=entry.clazz,
+                description=entry.description,
+                category=entry.category,
+                status=status,  # type: ignore[arg-type]
+                method="class",
+                matched=matched,
+                status_code=resp.status_code,
+                elapsed_ms=round(resp.elapsed_ms, 2),
+                response_excerpt=_excerpt(text),
+                payload=payload,
+            )
+
+        workers = min(self.concurrency, max(1, len(catalog)))
+        if workers == 1 or len(catalog) <= 1:
+            results = [_one(e) for e in catalog]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futs = {pool.submit(_one, e): e for e in catalog}
+                by_class: dict[str, DepHit] = {}
+                for fut in as_completed(futs):
+                    entry = futs[fut]
+                    by_class[entry.clazz] = fut.result()
+                results = [by_class[e.clazz] for e in catalog]
+
+        return self._finalize(
+            url, "class", results, notes, dns_filter=None, dns_records=[]
+        )
 
     def _scan_dns(
         self, url: str, catalog: list[DepEntry], notes: list[str]
@@ -309,6 +452,10 @@ class FastjsonDepsDetector:
             summary = (
                 f"Character 依赖探测完成：发现 {len(present)}/{len(results)} 个类存在"
             )
+        elif method == "class":
+            summary = (
+                f"Class MiscCodec 依赖探测完成：发现 {len(present)}/{len(results)} 个类存在"
+            )
         else:
             summary = (
                 f"DNS 依赖探测完成：确认 {len(present)}/{len(results)} 个类"
@@ -317,21 +464,40 @@ class FastjsonDepsDetector:
 
         next_actions: list[str] = []
         if present:
-            next_actions.append("结合版本探测结果，优先匹配已确认依赖可用的利用链")
             cats = sorted({h.category for h in present})
+            next_actions.append(
+                "poc_catalog → 按已确认依赖选 gadget；poc_run(family=…, options.gadget=…)"
+            )
             next_actions.append(f"已确认类别：{', '.join(cats)}")
         if method == "dns" and not present and unknown_count:
-            next_actions.append("DNS 无命中时改用 character（需报错回显）复测")
-        if method == "character" and unknown_count and not present:
             next_actions.append(
-                "大量 unknown 表示目标可能无报错回显；可核对 Content-Type / 反序列化点，或试 dns 方法"
+                "deps_probe(method=character) 复测（自动校准 Character/Class）"
             )
-        elif method == "character" and not present and results:
+        if method in ("character", "class") and unknown_count and not present:
+            broken = sum(
+                1
+                for h in results
+                if "not close json text" in (h.matched or [])
+            )
+            if broken and method == "character":
+                next_actions.append(
+                    "deps_probe(method=class) 强制 Class MiscCodec；"
+                    "或确认 target 为反序列化点"
+                )
+            else:
+                next_actions.append(
+                    "大量 unknown：核对 Content-Type / 反序列化点；"
+                    "可试 deps_probe(method=dns)（需 CEYE）"
+                )
+        elif method in ("character", "class") and not present and results:
             next_actions.append(
-                "若怀疑误判，可缩小类别复测或改用 dns（需 CEYE，版本敏感）"
+                "若怀疑误判，缩小 categories/classes 复测，或 deps_probe(method=dns)"
             )
         if not next_actions:
-            next_actions.append("确认请求打到 Fastjson 反序列化点且 Content-Type 正确")
+            next_actions.append(
+                "确认 target 为 Fastjson 反序列化 POST 点（如 /api/fastjson），"
+                "而非站点根路径"
+            )
 
         return DepsResult(
             target=target,
@@ -352,5 +518,6 @@ class FastjsonDepsDetector:
                 "concurrency": self.concurrency,
                 "ceye_domain": self.ceye_config.domain if self.ceye_config else None,
                 "dnslog_host": self.dnslog_host,
+                "oracle": method,
             },
         )

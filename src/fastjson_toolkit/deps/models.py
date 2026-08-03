@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-DepMethod = Literal["character", "dns"]
+DepMethod = Literal["character", "class", "dns"]
 DepStatus = Literal["present", "absent", "unknown", "error"]
 
 

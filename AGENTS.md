@@ -31,6 +31,7 @@ python tests/lab/lab_test_1280_gadgets.py
 
 工具：`detect_pipeline`、`deps_probe`、`poc_catalog`、`poc_run`、`poc_script`、`docs_list`、`docs_get`。
 MCP 的 DNS/CEYE 默认读项目 `.env`（`CEYE_TOKEN` / `CEYE_DOMAIN`，设置页可配），工具参数不暴露 token/domain。
+`detect_pipeline` 的 `target` 应为反序列化点；根路径会尝试 `/api/health` 与常见路径。`deps_probe(method=character)` 在 AutoType 关闭时自动降级 Class MiscCodec。`poc_run` 的 `io_read_error` 需 `send=true` + `options.read_length` 才爆破读全文。
 `poc_script` 只返回固定原脚本（如 `1.2.68/io_read_error`），由 LLM 按环境自行改；不传参可列目录。文档读 `web/content/docs/`（可用 `FASTJSON_DOCS_DIR` 覆盖）。细节见 `README.md`「MCP」节。
 
 ---

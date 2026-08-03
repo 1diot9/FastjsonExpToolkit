@@ -221,7 +221,7 @@ def deps_cmd(
     method: str = typer.Option(
         "character",
         "--method",
-        help="character（报错回显，推荐）或 dns（Locale+Inet4）",
+        help="character（自动降级 Class）/ class / dns（Locale+Inet4）",
     ),
     category: Optional[list[str]] = typer.Option(
         None, "--category", "-c", help="按类别过滤，可重复"
@@ -247,8 +247,8 @@ def deps_cmd(
     load_dotenv()
     headers = _parse_headers(header)
     method_norm = method.strip().lower()
-    if method_norm not in ("character", "dns"):
-        raise typer.BadParameter("method 仅支持 character 或 dns")
+    if method_norm not in ("character", "class", "dns"):
+        raise typer.BadParameter("method 仅支持 character、class 或 dns")
 
     ceye_cfg = None
     if method_norm == "dns" and not no_ceye:

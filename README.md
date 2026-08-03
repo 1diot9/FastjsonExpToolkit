@@ -52,15 +52,17 @@ CEYE_DOMAIN=hpdth2.ceye.io
 
 | 工具 | 说明 |
 |------|------|
-| `detect_pipeline` | 识别 → 版本 → 期望类（DNS/CEYE 读 `.env`） |
-| `deps_probe` | 依赖探测（默认 `character` 报错回显） |
+| `detect_pipeline` | 识别 → 版本 → 期望类；根路径会尝试 `/api/health` 与常见反序列化点 |
+| `deps_probe` | 依赖探测（`character` 自动降级 `class` MiscCodec；可选 `dns`） |
 | `poc_catalog` | gadget / 回显引擎 / WAF 技巧目录 |
-| `poc_run` | 生成或发送 PoC |
+| `poc_run` | 生成或发送 PoC（`io_read_error` + `read_length` 可逐字节爆破） |
 | `poc_script` | 取固定原脚本（LLM 按环境自行改）；不传参列目录 |
 | `docs_list` | 漏洞文档标题与摘要 |
 | `docs_get` | 按 slug 取 Markdown 正文 |
 
 推荐工作流：`detect_pipeline` → `deps_probe` → `poc_catalog` / `poc_run`；脚本类用 `poc_script`；文档用 `docs_list` → `docs_get`。
+
+注意：`target` 应为反序列化 POST 点（如 `/api/fastjson`）；SafeMode 为低置信启发式并与 AutoCloseable 交叉校验；本地 `18068` 为版本矩阵（瘦依赖），`18268` 为 gadget 靶场。
 
 ### 方式一：stdio
 
