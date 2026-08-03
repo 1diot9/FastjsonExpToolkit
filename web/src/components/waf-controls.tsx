@@ -55,6 +55,13 @@ export function WafControls({ value, onChange }: Props) {
     });
   }
 
+  const showComma = current.techniques.includes("multi_comma");
+  const showPad = current.techniques.includes("pad");
+  const showTypeKey = current.techniques.some((id) =>
+    ["key_underscore", "key_hyphen", "key_mixed"].includes(id),
+  );
+  const showOptions = showComma || showPad || showTypeKey;
+
   return (
     <div className="space-y-3 rounded-lg border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -111,43 +118,51 @@ export function WafControls({ value, onChange }: Props) {
         })}
       </div>
 
-      {current.techniques.length > 0 ? (
+      {showOptions ? (
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-1">
-            <Label htmlFor="waf-comma">多逗号数量</Label>
-            <Input
-              id="waf-comma"
-              value={String(current.options.comma_count ?? 5)}
-              onChange={(e) =>
-                patchOptions({ comma_count: Number(e.target.value) || 5 })
-              }
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="waf-pad">填充长度</Label>
-            <Input
-              id="waf-pad"
-              value={String(current.options.pad_size ?? 20000)}
-              onChange={(e) =>
-                patchOptions({ pad_size: Number(e.target.value) || 20000 })
-              }
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="opacity-0">.</Label>
-            <Button
-              type="button"
-              variant={current.options.include_type_key ? "default" : "outline"}
-              className="w-full"
-              onClick={() =>
-                patchOptions({
-                  include_type_key: !current.options.include_type_key,
-                })
-              }
-            >
-              key 变换含 @type
-            </Button>
-          </div>
+          {showComma ? (
+            <div className="space-y-1">
+              <Label htmlFor="waf-comma">多逗号数量</Label>
+              <Input
+                id="waf-comma"
+                value={String(current.options.comma_count ?? 5)}
+                onChange={(e) =>
+                  patchOptions({ comma_count: Number(e.target.value) || 5 })
+                }
+              />
+            </div>
+          ) : null}
+          {showPad ? (
+            <div className="space-y-1">
+              <Label htmlFor="waf-pad">填充长度</Label>
+              <Input
+                id="waf-pad"
+                value={String(current.options.pad_size ?? 20000)}
+                onChange={(e) =>
+                  patchOptions({ pad_size: Number(e.target.value) || 20000 })
+                }
+              />
+            </div>
+          ) : null}
+          {showTypeKey ? (
+            <div className="space-y-1">
+              <Label className="opacity-0">.</Label>
+              <Button
+                type="button"
+                variant={
+                  current.options.include_type_key ? "default" : "outline"
+                }
+                className="w-full"
+                onClick={() =>
+                  patchOptions({
+                    include_type_key: !current.options.include_type_key,
+                  })
+                }
+              >
+                key 变换含 @type
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
