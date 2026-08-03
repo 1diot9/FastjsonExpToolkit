@@ -54,8 +54,28 @@ class Poc1268GenerateOptions(BaseModel):
     content: Optional[str] = Field(None, description="写入内容（写文件链）")
     source: Optional[str] = Field(None, description="file_copy 源路径 tempPath")
     url: Optional[str] = Field(None, description="io_read_* 的 file:// / http URL")
-    guess_byte: Optional[int] = Field(None, description="io_read_error 猜测首字节 0-255")
-    bom_bytes: Optional[list[int]] = Field(None, description="io_read_echo BOM 前缀字节")
+    guess_byte: Optional[int] = Field(
+        None, description="io_read_error 单字节探测 0-255（不爆破时）"
+    )
+    bom_bytes: Optional[list[int]] = Field(
+        None,
+        description="io_read_error / io_read_echo 的 BOM 前缀字节；报错读可多字节",
+    )
+    read_length: Optional[int] = Field(
+        None,
+        ge=1,
+        le=4096,
+        description=(
+            "io_read_error 爆破读取最大字节数；send=true 时启用逐字节报错读"
+        ),
+    )
+    read_charset: Optional[str] = Field(
+        "mixed",
+        description="爆破码表：mixed(默认含大小写) / lower / printable",
+    )
+    read_charset_bytes: Optional[list[int]] = Field(
+        None, description="自定义爆破码表（优先于 read_charset）"
+    )
     host: Optional[str] = Field(None, description="MySQL/PG host")
     port: Optional[int] = Field(None, description="MySQL/PG port")
     user: Optional[str] = Field(None, description="MySQL user")
@@ -135,6 +155,12 @@ class Poc1268GenerateResult(BaseModel):
     memshell: bool = False
     memshell_info: Optional[dict] = None
     memshell_connect: Optional[str] = None
+    read_bytes: Optional[list[int]] = Field(
+        None, description="io_read_error 爆破得到的字节"
+    )
+    read_content: Optional[str] = Field(
+        None, description="io_read_error 爆破得到的文本"
+    )
 
 
 class Poc1268SendOptions(Poc1268GenerateOptions):
@@ -176,4 +202,6 @@ class Poc1268SendResult(BaseModel):
     memshell: bool = False
     memshell_info: Optional[dict] = None
     memshell_connect: Optional[str] = None
+    read_bytes: Optional[list[int]] = None
+    read_content: Optional[str] = None
     raw: dict[str, Any] = Field(default_factory=dict)

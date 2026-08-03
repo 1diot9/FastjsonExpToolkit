@@ -583,6 +583,10 @@ export type Poc1268Request = {
   source?: string | null;
   url?: string | null;
   guess_byte?: number | null;
+  bom_bytes?: number[] | null;
+  read_length?: number | null;
+  read_charset?: string | null;
+  read_charset_bytes?: number[] | null;
   host?: string | null;
   port?: number | null;
   user?: string | null;
@@ -614,6 +618,8 @@ export type Poc1268Result = Poc1247Result & {
   wrap_currency?: boolean;
   attack_jar_b64?: string | null;
   attack_xml_b64?: string | null;
+  read_bytes?: number[] | null;
+  read_content?: string | null;
 };
 
 export async function listPoc1268Gadgets(): Promise<Poc1268Gadget[]> {

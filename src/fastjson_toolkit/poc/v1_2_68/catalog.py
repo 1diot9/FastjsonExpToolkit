@@ -159,11 +159,12 @@ GADGETS: tuple[GadgetEntry, ...] = (
         title="commons-io 报错读文件/目录",
         description=(
             "BOMInputStream + URLReader(file://) + CharSequenceReader($ref BOM)；"
-            "首字节猜对时报错。需 Nashorn URLReader（JDK≤14）。"
+            "前缀猜对时报错。send 时可按码表逐字节爆破读全文（read_length）。"
+            "需 Nashorn URLReader（JDK≤14）。"
         ),
         requires=("commons-io", "jdk.nashorn.api.scripting.URLReader"),
         jdk="8–14（含 Nashorn）",
-        input_fields=("url", "guess_byte"),
+        input_fields=("url", "read_length", "read_charset", "guess_byte", "bom_bytes"),
         references=("https://b1ue.cn/archives/506.html",),
     ),
     GadgetEntry(

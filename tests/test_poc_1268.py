@@ -88,6 +88,33 @@ def test_mysql51_shape():
     assert "1.2.3.4" in p
 
 
+def test_io_read_error_multi_bytes():
+    p = build_payload(
+        "io_read_error",
+        url="file:///tmp/x",
+        bom_bytes=[70, 74, 49],
+    )
+    assert '"bytes":[70,74,49]' in p
+    assert "CharSequenceReader" in p
+    assert "URLReader" in p
+
+
+def test_io_read_charset_presets():
+    from fastjson_toolkit.poc.v1_2_68.io_read import (
+        ASCII_LINUX_MIXED,
+        is_error_read_match,
+        resolve_read_charset,
+    )
+
+    assert resolve_read_charset("mixed") == ASCII_LINUX_MIXED
+    assert 70 in resolve_read_charset("mixed")
+    assert 65 not in resolve_read_charset("lower")
+    assert is_error_read_match(400, "x") is True
+    assert is_error_read_match(200, "nope") is False
+    assert is_error_read_match(200, '{"abc":{"bOM":{}}}') is True
+    assert is_error_read_match(200, "charSequence boom") is True
+
+
 def test_generate_service():
     r = generate_poc_1268(Poc1268GenerateOptions(gadget="file_truncate", file="/tmp/t"))
     assert r.ok

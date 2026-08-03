@@ -264,6 +264,19 @@ class Poc1268Request(BaseModel):
     url: Optional[str] = Field(None, description="io_read_* URL")
     guess_byte: Optional[int] = Field(None, ge=0, le=255)
     bom_bytes: Optional[list[int]] = Field(None)
+    read_length: Optional[int] = Field(
+        None,
+        ge=1,
+        le=4096,
+        description="io_read_error 爆破最大字节数（send=true 时启用）",
+    )
+    read_charset: Optional[str] = Field(
+        "mixed",
+        description="爆破码表：mixed / lower / printable",
+    )
+    read_charset_bytes: Optional[list[int]] = Field(
+        None, description="自定义爆破码表"
+    )
     host: Optional[str] = None
     port: Optional[int] = None
     user: Optional[str] = None

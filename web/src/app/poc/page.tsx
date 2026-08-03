@@ -1238,6 +1238,8 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
   const [source, setSource] = useState("/tmp/fj1268_copy_src");
   const [url, setUrl] = useState("file:///tmp/fj1268_copy_src");
   const [guessByte, setGuessByte] = useState("70");
+  const [readLength, setReadLength] = useState("50");
+  const [readCharset, setReadCharset] = useState("mixed");
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState("3308");
   const [jdbcUrl, setJdbcUrl] = useState("");
@@ -1279,6 +1281,11 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
         source: source.trim() || null,
         url: url.trim() || null,
         guess_byte: guessByte ? Number(guessByte) : null,
+        read_length:
+          fields.has("read_length") && readLength
+            ? Number(readLength)
+            : null,
+        read_charset: fields.has("read_charset") ? readCharset : null,
         host: host.trim() || null,
         port: port ? Number(port) : null,
         jdbc_url: jdbcUrl.trim() || null,
@@ -1298,7 +1305,9 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
       });
       setResult(data);
       if (data.ok) {
-        if (data.echo_output) toast.success("回显成功");
+        if (data.read_content != null && data.read_content !== "") {
+          toast.success(`报错读成功：${data.read_content.length} 字符`);
+        } else if (data.echo_output) toast.success("回显成功");
         else if (data.memshell) toast.success("已生成内存马 payload");
         else toast.success(doSend ? "已发送" : "已生成");
       } else toast.error(data.summary || "失败");
@@ -1395,14 +1404,44 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
             </div>
           ) : null}
 
-          {fields.has("guess_byte") ? (
-            <div className="grid gap-2">
-              <Label htmlFor="guess-1268">猜测首字节 (0-255)</Label>
-              <Input
-                id="guess-1268"
-                value={guessByte}
-                onChange={(e) => setGuessByte(e.target.value)}
-              />
+          {fields.has("guess_byte") || fields.has("read_length") ? (
+            <div className="grid gap-4 sm:grid-cols-3">
+              {fields.has("read_length") ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="read-len-1268">爆破长度</Label>
+                  <Input
+                    id="read-len-1268"
+                    value={readLength}
+                    onChange={(e) => setReadLength(e.target.value)}
+                    placeholder="50"
+                  />
+                </div>
+              ) : null}
+              {fields.has("read_charset") ? (
+                <div className="grid gap-2">
+                  <Label>码表</Label>
+                  <Select value={readCharset} onValueChange={setReadCharset}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mixed">mixed（大小写）</SelectItem>
+                      <SelectItem value="lower">lower（小写）</SelectItem>
+                      <SelectItem value="printable">printable</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {fields.has("guess_byte") ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="guess-1268">单字节探测 (0-255)</Label>
+                  <Input
+                    id="guess-1268"
+                    value={guessByte}
+                    onChange={(e) => setGuessByte(e.target.value)}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -1621,6 +1660,21 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
                     readOnly
                     className="min-h-28 font-mono text-xs"
                     value={result.echo_output}
+                  />
+                </div>
+              ) : null}
+              {result.read_content != null ? (
+                <div className="grid gap-2">
+                  <Label>
+                    报错读内容
+                    {result.read_bytes
+                      ? `（${result.read_bytes.length} bytes）`
+                      : ""}
+                  </Label>
+                  <Textarea
+                    readOnly
+                    className="min-h-28 font-mono text-xs"
+                    value={result.read_content}
                   />
                 </div>
               ) : null}

