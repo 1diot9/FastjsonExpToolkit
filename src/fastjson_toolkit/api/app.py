@@ -531,8 +531,10 @@ def create_app() -> FastAPI:
         tags=["poc"],
         summary="Fastjson ≤1.2.68 gadget 目录",
     )
-    def poc_1268_gadgets() -> list[dict[str, Any]]:
-        return list_poc_1268_gadgets()
+    def poc_1268_gadgets(
+        include_hidden: bool = False,
+    ) -> list[dict[str, Any]]:
+        return list_poc_1268_gadgets(include_hidden=include_hidden)
 
     @app.post(
         "/api/poc/1.2.68",

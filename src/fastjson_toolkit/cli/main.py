@@ -479,7 +479,7 @@ def poc_1268_cmd(
         "file_truncate",
         "--gadget",
         "-g",
-        help="见 --list；如 file_truncate / jdk11_write / io1_write / io_final",
+        help="见 --list；如 file_truncate / jdk11_write / io_final",
     ),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="写入/截断路径"),
     content: Optional[str] = typer.Option(None, "--content", "-c", help="写入内容"),
@@ -514,7 +514,10 @@ def poc_1268_cmd(
     ),
     pad_size: int = typer.Option(20000, "--pad-size", help="WAF pad 填充长度"),
     comma_count: int = typer.Option(5, "--comma-count", help="WAF 多逗号数量"),
-    list_gadgets: bool = typer.Option(False, "--list", help="列出 gadget"),
+    list_gadgets: bool = typer.Option(False, "--list", help="列出 gadget（默认不含隐藏项）"),
+    include_hidden: bool = typer.Option(
+        False, "--all", help="列出时包含隐藏的 io1–io5 等变体"
+    ),
     json_out: bool = typer.Option(False, "--json", help="输出完整 JSON"),
 ) -> None:
     """Fastjson ≤1.2.68 AutoCloseable：生成 / 可选发送证明 payload。"""
@@ -525,12 +528,13 @@ def poc_1268_cmd(
     )
 
     if list_gadgets:
-        gadgets = list_poc_1268_gadgets()
+        gadgets = list_poc_1268_gadgets(include_hidden=include_hidden)
         if json_out:
             typer.echo(json.dumps(gadgets, ensure_ascii=False, indent=2))
         else:
             for g in gadgets:
-                rprint(f"[bold]{g['id']}[/bold]  {g['title']}")
+                hidden = " [hidden]" if g.get("hidden") else ""
+                rprint(f"[bold]{g['id']}[/bold]{hidden}  {g['title']}")
                 rprint(f"  {g['description']}")
                 rprint(f"  requires: {', '.join(g['requires'])} | jdk: {g['jdk']}")
         raise typer.Exit(0)

@@ -16,7 +16,13 @@ from fastjson_toolkit.poc.v1_2_68.service import generate_poc_1268, list_gadgets
 
 def test_list_gadgets_covers_notes():
     ids = {g["id"] for g in list_gadgets()}
-    assert ids >= {
+    assert "io_final" in ids
+    assert "io_read_error" in ids
+    # io1–io5 写变体默认隐藏
+    assert "io1_write" not in ids
+    assert "io5_write" not in ids
+    all_ids = {g["id"] for g in list_gadgets(include_hidden=True)}
+    assert all_ids >= {
         "file_truncate",
         "jdk11_write",
         "file_copy",
@@ -31,6 +37,18 @@ def test_list_gadgets_covers_notes():
         "mysql_jdbc_80",
         "postgresql_ssrf",
     }
+    hidden_writes = {
+        g["id"]
+        for g in list_gadgets(include_hidden=True)
+        if g["id"] in {"io1_write", "io2_write", "io3_write", "io4_write", "io5_write"}
+    }
+    assert hidden_writes == {"io1_write", "io2_write", "io3_write", "io4_write", "io5_write"}
+    assert all(
+        g["hidden"]
+        for g in list_gadgets(include_hidden=True)
+        if g["id"] in hidden_writes
+    )
+    assert not next(g for g in list_gadgets() if g["id"] == "io_final")["hidden"]
 
 
 def test_file_truncate_has_duplicate_autocloseable():

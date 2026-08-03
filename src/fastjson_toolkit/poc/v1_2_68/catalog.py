@@ -35,6 +35,7 @@ class GadgetEntry:
     jdk: str
     input_fields: tuple[str, ...]
     references: tuple[str, ...] = ()
+    hidden: bool = False
 
 
 GADGETS: tuple[GadgetEntry, ...] = (
@@ -82,12 +83,28 @@ GADGETS: tuple[GadgetEntry, ...] = (
         references=("https://su18.org/post/fastjson-1.2.68/",),
     ),
     GadgetEntry(
+        id="io_final",
+        title="commons-io 写文件（推荐）",
+        description=(
+            "最通用 io 写链：BOMInputStream + TeeInputStream + CharSequenceInputStream，"
+            "$ref $.bOM 触发 getBOM 落盘。默认仅依赖 commons-io；"
+            "靶场稳定形态用 LazyFileOutputStream（ant）。覆盖原 io1–io5 / ioFinal 场景。"
+        ),
+        requires=("commons-io",),
+        jdk="8+",
+        input_fields=("file", "content"),
+        references=(
+            "https://su18.org/post/fastjson-1.2.68/",
+            "https://b1ue.cn/archives/506.html",
+        ),
+    ),
+    # --- 以下 io 写变体默认隐藏，CLI/API 仍可按 id 生成 ---
+    GadgetEntry(
         id="io1_write",
         title="commons-io io1 写文件",
         description=(
-            "笔记 io1 数据流证明：CharSequenceInputStream → Tee → 文件，BOM.$ref 触发。"
-            "经典 XmlStreamReader/FileWriterWithEncoding+WriterOutputStream 受构造随机影响；"
-            "稳定落盘用 LazyFileOutputStream（与 io3 同构）。"
+            "笔记 io1 数据流；证明态与 io_final 同构（LazyFile）。"
+            "经典 XmlStreamReader/FileWriterWithEncoding+WriterOutputStream 受构造随机影响。"
         ),
         requires=("commons-io", "ant LazyFileOutputStream"),
         jdk="8+",
@@ -96,6 +113,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
             "https://mp.weixin.qq.com/s/6fHJ7s6Xo4GEdEGpKFLOyg",
             "https://su18.org/post/fastjson-1.2.68/",
         ),
+        hidden=True,
     ),
     GadgetEntry(
         id="io2_write",
@@ -104,6 +122,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
         requires=("commons-io 2.7–2.8.0",),
         jdk="8+",
         input_fields=("file", "content"),
+        hidden=True,
     ),
     GadgetEntry(
         id="io3_write",
@@ -113,6 +132,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
         jdk="8+",
         input_fields=("file", "content"),
         references=("https://su18.org/post/fastjson-1.2.68/", "https://github.com/su18/fastjson-commons-io"),
+        hidden=True,
     ),
     GadgetEntry(
         id="io4_write",
@@ -122,6 +142,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
         jdk="8+",
         input_fields=("file", "content"),
         references=("https://i.blackhat.com/USA21/Wednesday-Handouts/US-21-Xing-How-I-Used-a-JSON.pdf",),
+        hidden=True,
     ),
     GadgetEntry(
         id="io5_write",
@@ -131,18 +152,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
         jdk="8+",
         input_fields=("file", "content"),
         references=("https://mp.weixin.qq.com/s/WbYi7lPEvFg-vAUB4Nlvew",),
-    ),
-    GadgetEntry(
-        id="io_final",
-        title="ioFinal BOM+LockableFileWriter",
-        description=(
-            "BOMInputStream → AutoCloseInputStream → TeeInputStream → "
-            "ReaderInputStream/CharSequenceReader → WriterOutputStream/LockableFileWriter；"
-            "$ref $.bOM 触发。支持 iso-8859-1 二进制。"
-        ),
-        requires=("commons-io",),
-        jdk="8+",
-        input_fields=("file", "content"),
+        hidden=True,
     ),
     GadgetEntry(
         id="io_read_error",
@@ -213,7 +223,7 @@ def get_gadget(gadget_id: str) -> GadgetEntry:
     raise KeyError(f"未知 gadget: {gadget_id}")
 
 
-def list_gadgets() -> list[dict]:
+def list_gadgets(*, include_hidden: bool = False) -> list[dict]:
     return [
         {
             "id": g.id,
@@ -223,6 +233,8 @@ def list_gadgets() -> list[dict]:
             "jdk": g.jdk,
             "input_fields": list(g.input_fields),
             "references": list(g.references),
+            "hidden": g.hidden,
         }
         for g in GADGETS
+        if include_hidden or not g.hidden
     ]

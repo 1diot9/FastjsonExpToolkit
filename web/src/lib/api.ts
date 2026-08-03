@@ -502,7 +502,7 @@ export async function runPoc1247(
   return res.json();
 }
 
-export type Poc1268Gadget = Poc1247Gadget;
+export type Poc1268Gadget = Poc1247Gadget & { hidden?: boolean };
 
 export type Poc1268Request = {
   gadget: string;
