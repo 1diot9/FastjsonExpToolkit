@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Copy, Loader2, Play, Wand2 } from "lucide-react";
@@ -52,20 +52,20 @@ import {
   type Poc16723Result,
 } from "@/lib/api";
 
-const ECHO_1247 = new Set([
-  "jdbc_rowset",
-  "bcel_tomcat_dbcp",
-  "bcel_tomcat_dbcp2",
-  "bcel_commons_dbcp",
-  "bcel_commons_dbcp2",
-  "mybatis_bcel",
-  "h2_jdbc",
-]);
-const ECHO_1268 = new Set(["postgresql_ssrf"]);
-const ECHO_1280 = new Set(["postgresql", "jython", "groovy"]);
+const ECHO_1247_JDBC = "jdbc_rowset";
 
-/** 与回显同一批可投递字节码的链（1.2.47 不含 jdbc_rowset） */
-const MEMSHELL_1247 = new Set([
+/** 可自动生成预设字节码的链（含 C3P0；echo/memshell 亦属预设） */
+const PRESET_1247 = new Set([
+  "bcel_tomcat_dbcp",
+  "bcel_tomcat_dbcp2",
+  "bcel_commons_dbcp",
+  "bcel_commons_dbcp2",
+  "mybatis_bcel",
+  "h2_jdbc",
+  "c3p0_wrapper",
+]);
+/** 支持 echo/memshell 预设的链（不含 c3p0 / jdbc_rowset） */
+const PRESET_1247_ECHO_MS = new Set([
   "bcel_tomcat_dbcp",
   "bcel_tomcat_dbcp2",
   "bcel_commons_dbcp",
@@ -73,8 +73,24 @@ const MEMSHELL_1247 = new Set([
   "mybatis_bcel",
   "h2_jdbc",
 ]);
-const MEMSHELL_1268 = new Set(["postgresql_ssrf"]);
-const MEMSHELL_1280 = new Set(["postgresql", "jython", "groovy"]);
+const RCE_PRESET_1268 = new Set(["postgresql_ssrf"]);
+const RCE_PRESET_1280 = new Set(["postgresql", "jython", "groovy"]);
+
+type PresetMode = "auto" | "custom" | "touch" | "exec" | "echo" | "memshell";
+type RcePresetMode = "file" | "custom" | "exec" | "echo" | "memshell";
+
+function effective1247Preset(gadget: string, preset: PresetMode): PresetMode {
+  if (gadget === ECHO_1247_JDBC) {
+    return preset === "echo" ? "echo" : "custom";
+  }
+  if (
+    !PRESET_1247_ECHO_MS.has(gadget) &&
+    (preset === "echo" || preset === "memshell")
+  ) {
+    return "auto";
+  }
+  return preset;
+}
 
 const MS_FALLBACK_SERVERS = ["Undertow", "Tomcat", "SpringWebMvc"];
 const MS_FALLBACK_TOOLS = ["Command", "Godzilla", "Behinder"];
@@ -103,9 +119,9 @@ function emptyMemShellState(): MemShellState {
   };
 }
 
-function memShellRequestFields(ms: MemShellState) {
+function memShellRequestFields(ms: MemShellState, enabled?: boolean) {
   return {
-    memshell: ms.enabled === "true",
+    memshell: enabled ?? ms.enabled === "true",
     ms_api: ms.api.trim() || "jar",
     ms_server: ms.server,
     ms_tool: ms.tool,
@@ -113,6 +129,54 @@ function memShellRequestFields(ms: MemShellState) {
     ms_path: ms.path.trim() || "/*",
     ms_jdk: ms.jdk,
   };
+}
+
+function EchoOptions(props: {
+  engine: EchoEngine;
+  setEngine: (v: EchoEngine) => void;
+  cmd: string;
+  setCmd: (v: string) => void;
+  cmdHeader: string;
+  setCmdHeader: (v: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-2">
+        <Label>回显引擎</Label>
+        <Select
+          value={props.engine}
+          onValueChange={(v) => props.setEngine(v as EchoEngine)}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ECHO_ENGINES.map((e) => (
+              <SelectItem key={e.id} value={e.id}>
+                {e.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="echo-cmd">命令</Label>
+        <Input
+          id="echo-cmd"
+          value={props.cmd}
+          onChange={(e) => props.setCmd(e.target.value)}
+        />
+      </div>
+      <div className="grid gap-2 sm:col-span-2">
+        <Label htmlFor="echo-hdr">命令请求头</Label>
+        <Input
+          id="echo-hdr"
+          value={props.cmdHeader}
+          onChange={(e) => props.setCmdHeader(e.target.value)}
+        />
+      </div>
+    </div>
+  );
 }
 
 function EchoFields(props: {
@@ -146,45 +210,16 @@ function EchoFields(props: {
             </SelectContent>
           </Select>
         </div>
-        <div className="grid gap-2">
-          <Label>回显引擎</Label>
-          <Select
-            value={props.engine}
-            onValueChange={(v) => props.setEngine(v as EchoEngine)}
-            disabled={props.disabled || props.echo !== "true"}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ECHO_ENGINES.map((e) => (
-                <SelectItem key={e.id} value={e.id}>
-                  {e.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
       {props.echo === "true" && !props.disabled ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="echo-cmd">命令</Label>
-            <Input
-              id="echo-cmd"
-              value={props.cmd}
-              onChange={(e) => props.setCmd(e.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="echo-hdr">命令请求头</Label>
-            <Input
-              id="echo-hdr"
-              value={props.cmdHeader}
-              onChange={(e) => props.setCmdHeader(e.target.value)}
-            />
-          </div>
-        </div>
+        <EchoOptions
+          engine={props.engine}
+          setEngine={props.setEngine}
+          cmd={props.cmd}
+          setCmd={props.setCmd}
+          cmdHeader={props.cmdHeader}
+          setCmdHeader={props.setCmdHeader}
+        />
       ) : null}
       {props.hint ? (
         <p className="text-xs text-muted-foreground">{props.hint}</p>
@@ -193,11 +228,10 @@ function EchoFields(props: {
   );
 }
 
-function MemShellFields(props: {
+function MemShellOptions(props: {
   value: MemShellState;
   onChange: (next: MemShellState) => void;
   config: MemShellConfig | null;
-  hint?: string;
 }) {
   const { value, onChange, config } = props;
   const servers =
@@ -212,6 +246,144 @@ function MemShellFields(props: {
     config && value.server && config[value.server]?.[value.tool]
       ? config[value.server][value.tool]
       : MS_FALLBACK_TYPES;
+
+  function patch(partial: Partial<MemShellState>) {
+    onChange({ ...value, ...partial });
+  }
+
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-2 sm:col-span-2">
+          <Label htmlFor="ms-api">生成后端</Label>
+          <Input
+            id="ms-api"
+            value={value.api}
+            onChange={(e) => patch({ api: e.target.value })}
+            placeholder="jar 或 http://127.0.0.1:8091"
+          />
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-2">
+          <Label>中间件</Label>
+          <Select
+            value={value.server}
+            onValueChange={(server) => {
+              const nextTools =
+                config && config[server]
+                  ? Object.keys(config[server])
+                  : MS_FALLBACK_TOOLS;
+              const tool = nextTools.includes(value.tool)
+                ? value.tool
+                : nextTools[0] || "Command";
+              const nextTypes =
+                config && config[server]?.[tool]
+                  ? config[server][tool]
+                  : MS_FALLBACK_TYPES;
+              const type = nextTypes.includes(value.type)
+                ? value.type
+                : nextTypes[0] || "Filter";
+              patch({ server, tool, type });
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {servers.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label>工具</Label>
+          <Select
+            value={value.tool}
+            onValueChange={(tool) => {
+              const nextTypes =
+                config && config[value.server]?.[tool]
+                  ? config[value.server][tool]
+                  : MS_FALLBACK_TYPES;
+              const type = nextTypes.includes(value.type)
+                ? value.type
+                : nextTypes[0] || "Filter";
+              patch({ tool, type });
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {tools.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label>类型</Label>
+          <Select
+            value={value.type}
+            onValueChange={(type) => patch({ type })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {types.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-2">
+          <Label htmlFor="ms-path">urlPattern</Label>
+          <Input
+            id="ms-path"
+            value={value.path}
+            onChange={(e) => patch({ path: e.target.value })}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label>目标 JDK</Label>
+          <Select
+            value={value.jdk}
+            onValueChange={(jdk) => patch({ jdk })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MS_JDK_OPTIONS.map((j) => (
+                <SelectItem key={j} value={j}>
+                  {j}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function MemShellFields(props: {
+  value: MemShellState;
+  onChange: (next: MemShellState) => void;
+  config: MemShellConfig | null;
+  hint?: string;
+}) {
+  const { value, onChange, config } = props;
 
   function patch(partial: Partial<MemShellState>) {
     onChange({ ...value, ...partial });
@@ -235,129 +407,9 @@ function MemShellFields(props: {
             </SelectContent>
           </Select>
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor="ms-api">生成后端</Label>
-          <Input
-            id="ms-api"
-            value={value.api}
-            onChange={(e) => patch({ api: e.target.value })}
-            disabled={value.enabled !== "true"}
-            placeholder="jar 或 http://127.0.0.1:8091"
-          />
-        </div>
       </div>
       {value.enabled === "true" ? (
-        <>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label>中间件</Label>
-              <Select
-                value={value.server}
-                onValueChange={(server) => {
-                  const nextTools =
-                    config && config[server]
-                      ? Object.keys(config[server])
-                      : MS_FALLBACK_TOOLS;
-                  const tool = nextTools.includes(value.tool)
-                    ? value.tool
-                    : nextTools[0] || "Command";
-                  const nextTypes =
-                    config && config[server]?.[tool]
-                      ? config[server][tool]
-                      : MS_FALLBACK_TYPES;
-                  const type = nextTypes.includes(value.type)
-                    ? value.type
-                    : nextTypes[0] || "Filter";
-                  patch({ server, tool, type });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {servers.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>工具</Label>
-              <Select
-                value={value.tool}
-                onValueChange={(tool) => {
-                  const nextTypes =
-                    config && config[value.server]?.[tool]
-                      ? config[value.server][tool]
-                      : MS_FALLBACK_TYPES;
-                  const type = nextTypes.includes(value.type)
-                    ? value.type
-                    : nextTypes[0] || "Filter";
-                  patch({ tool, type });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {tools.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>类型</Label>
-              <Select
-                value={value.type}
-                onValueChange={(type) => patch({ type })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {types.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="ms-path">urlPattern</Label>
-              <Input
-                id="ms-path"
-                value={value.path}
-                onChange={(e) => patch({ path: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>目标 JDK</Label>
-              <Select
-                value={value.jdk}
-                onValueChange={(jdk) => patch({ jdk })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MS_JDK_OPTIONS.map((j) => (
-                    <SelectItem key={j} value={j}>
-                      {j}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </>
+        <MemShellOptions value={value} onChange={onChange} config={config} />
       ) : null}
       {props.hint ? (
         <p className="text-xs text-muted-foreground">{props.hint}</p>
@@ -674,10 +726,12 @@ function Poc1247Panel() {
   const [currencyField, setCurrencyField] = useState("currency");
   const [jsonKeyWithType, setJsonKeyWithType] = useState("true");
   const [jsonKeyAsArray, setJsonKeyAsArray] = useState("false");
-  const [echo, setEcho] = useState("false");
   const [engine, setEngine] = useState<EchoEngine>("auto");
   const [cmd, setCmd] = useState("id");
   const [cmdHeader, setCmdHeader] = useState("X-Cmd");
+  const [preset, setPreset] = useState<PresetMode>("auto");
+  const [proofPath, setProofPath] = useState("");
+  const [proofContent, setProofContent] = useState("");
   const [ms, setMs] = useState<MemShellState>(emptyMemShellState);
   const [target, setTarget] = useState("http://127.0.0.1:18247/api/fastjson");
   const [send, setSend] = useState("false");
@@ -697,6 +751,7 @@ function Poc1247Panel() {
 
   const current = gadgets.find((g) => g.id === gadget);
   const fields = new Set(current?.input_fields ?? ["jndi_url"]);
+  const effectivePreset = effective1247Preset(gadget, preset);
 
   async function onGenerate(doSend: boolean) {
     setLoading(true);
@@ -714,11 +769,13 @@ function Poc1247Panel() {
         currency_field: currencyField,
         json_key_with_type: jsonKeyWithType === "true",
         json_key_as_array: jsonKeyAsArray === "true",
-        echo: echo === "true" && ms.enabled !== "true",
+        preset: effectivePreset,
+        proof_path: proofPath.trim() || null,
+        proof_content: proofContent.trim() || null,
         engine,
         cmd: cmd.trim() || "id",
         cmd_header: cmdHeader.trim() || "X-Cmd",
-        ...memShellRequestFields(ms),
+        ...memShellRequestFields(ms, effectivePreset === "memshell"),
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
@@ -853,34 +910,114 @@ function Poc1247Panel() {
             </div>
           ) : null}
 
-          {ECHO_1247.has(gadget) ? (
-            <EchoFields
-              echo={echo}
-              setEcho={(v) => {
-                setEcho(v);
-                if (v === "true") setMs((prev) => ({ ...prev, enabled: "false" }));
-              }}
-              engine={engine}
-              setEngine={setEngine}
-              cmd={cmd}
-              setCmd={setCmd}
-              cmdHeader={cmdHeader}
-              setCmdHeader={setCmdHeader}
-              disabled={ms.enabled === "true"}
-              hint="参考 java-echo-generator；JDK12+ 用 Unsafe 反射。开启后自动编译回显类填入 BCEL/H2（需本机 javac）。"
-            />
-          ) : null}
-
-          {MEMSHELL_1247.has(gadget) ? (
-            <MemShellFields
-              value={ms}
-              onChange={(next) => {
-                setMs(next);
-                if (next.enabled === "true") setEcho("false");
-              }}
-              config={msConfig}
-              hint="BCEL/H2/MyBatis 注入内存马（不含 jdbc_rowset）；与回显互斥；默认内置 jar。"
-            />
+          {PRESET_1247.has(gadget) || gadget === ECHO_1247_JDBC ? (
+            <div className="space-y-4 rounded-lg border border-border/60 p-3">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>预设字节码</Label>
+                  <Select
+                    value={effectivePreset}
+                    onValueChange={(v) => setPreset(v as PresetMode)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gadget === ECHO_1247_JDBC ? (
+                        <>
+                          <SelectItem value="custom">custom（仅 JNDI / 自备）</SelectItem>
+                          <SelectItem value="echo">
+                            echo（生成回显类供托管）
+                          </SelectItem>
+                        </>
+                      ) : (
+                        <>
+                          <SelectItem value="auto">
+                            auto（空字节码 → exec；已填 → custom）
+                          </SelectItem>
+                          <SelectItem value="exec">
+                            exec（自定义命令）
+                          </SelectItem>
+                          <SelectItem value="touch">
+                            touch（写证明文件）
+                          </SelectItem>
+                          {PRESET_1247_ECHO_MS.has(gadget) ? (
+                            <>
+                              <SelectItem value="echo">
+                                echo（命令回显）
+                              </SelectItem>
+                              <SelectItem value="memshell">
+                                memshell（内存马）
+                              </SelectItem>
+                            </>
+                          ) : null}
+                          <SelectItem value="custom">custom（自备字节码）</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {effectivePreset === "exec" || effectivePreset === "auto" ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="preset-cmd">执行命令</Label>
+                    <Input
+                      id="preset-cmd"
+                      value={cmd}
+                      onChange={(e) => setCmd(e.target.value)}
+                      placeholder="id"
+                    />
+                  </div>
+                ) : null}
+              </div>
+              {effectivePreset === "touch" ||
+              effectivePreset === "exec" ||
+              effectivePreset === "auto" ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="proof-path">证明文件路径（可选）</Label>
+                    <Input
+                      id="proof-path"
+                      value={proofPath}
+                      onChange={(e) => setProofPath(e.target.value)}
+                      placeholder={`/tmp/fj1247_${gadget}`}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="proof-content">证明内容前缀（可选）</Label>
+                    <Input
+                      id="proof-content"
+                      value={proofContent}
+                      onChange={(e) => setProofContent(e.target.value)}
+                      placeholder={`FJ1247_${gadget.toUpperCase()}`}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {effectivePreset === "echo" ? (
+                <EchoOptions
+                  engine={engine}
+                  setEngine={setEngine}
+                  cmd={cmd}
+                  setCmd={setCmd}
+                  cmdHeader={cmdHeader}
+                  setCmdHeader={setCmdHeader}
+                />
+              ) : null}
+              {effectivePreset === "memshell" &&
+              PRESET_1247_ECHO_MS.has(gadget) ? (
+                <MemShellOptions
+                  value={ms}
+                  onChange={setMs}
+                  config={msConfig}
+                />
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                touch / exec / echo / memshell
+                本质都是生成并投递自定义字节码；未填写 BCEL / class_b64 /
+                serialized 时自动 javac（需本机 JDK）。jdbc_rowset 的 echo
+                仅产出 class 供 JNDI/HTTP 托管。
+              </p>
+            </div>
           ) : null}
 
           <div className="grid gap-2">
@@ -1117,7 +1254,8 @@ function Poc1268Panel() {
   );
   const [wrapCurrency, setWrapCurrency] = useState("false");
   const [currencyField, setCurrencyField] = useState("currency");
-  const [echo, setEcho] = useState("false");
+  const [preset, setPreset] = useState<RcePresetMode>("file");
+  const [rceClassB64, setRceClassB64] = useState("");
   const [engine, setEngine] = useState<EchoEngine>("auto");
   const [cmd, setCmd] = useState("id");
   const [cmdHeader, setCmdHeader] = useState("X-Cmd");
@@ -1158,11 +1296,12 @@ function Poc1268Panel() {
         socket_factory_arg: socketFactoryArg.trim() || null,
         wrap_currency: wrapCurrency === "true",
         currency_field: currencyField,
-        echo: echo === "true" && ms.enabled !== "true",
+        preset,
+        class_b64: preset === "custom" ? rceClassB64.trim() || undefined : undefined,
         engine,
         cmd: cmd.trim() || "id",
         cmd_header: cmdHeader.trim() || "X-Cmd",
-        ...memShellRequestFields(ms),
+        ...memShellRequestFields(ms, preset === "memshell"),
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
@@ -1312,34 +1451,75 @@ function Poc1268Panel() {
             </div>
           ) : null}
 
-          {ECHO_1268.has(gadget) ? (
-            <EchoFields
-              echo={echo}
-              setEcho={(v) => {
-                setEcho(v);
-                if (v === "true") setMs((prev) => ({ ...prev, enabled: "false" }));
-              }}
-              engine={engine}
-              setEngine={setEngine}
-              cmd={cmd}
-              setCmd={setCmd}
-              cmdHeader={cmdHeader}
-              setCmdHeader={setCmdHeader}
-              disabled={ms.enabled === "true"}
-              hint="postgresql_ssrf：生成 bean-echo.xml + echo.jar，需 HTTP 托管后由目标拉取。"
-            />
-          ) : null}
-
-          {MEMSHELL_1268.has(gadget) ? (
-            <MemShellFields
-              value={ms}
-              onChange={(next) => {
-                setMs(next);
-                if (next.enabled === "true") setEcho("false");
-              }}
-              config={msConfig}
-              hint="postgresql_ssrf：生成 bean-memshell.xml + memshell.jar；与回显互斥；默认内置 jar。"
-            />
+          {RCE_PRESET_1268.has(gadget) ? (
+            <div className="space-y-4 rounded-lg border border-border/60 p-3">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>RCE 预设</Label>
+                  <Select
+                    value={preset}
+                    onValueChange={(v) => setPreset(v as RcePresetMode)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="file">file（写证明文件）</SelectItem>
+                      <SelectItem value="custom">custom（自备字节码）</SelectItem>
+                      <SelectItem value="exec">exec（自定义命令）</SelectItem>
+                      <SelectItem value="echo">echo（命令回显）</SelectItem>
+                      <SelectItem value="memshell">
+                        memshell（内存马）
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {preset === "exec" ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="rce-cmd-1268">命令</Label>
+                    <Input
+                      id="rce-cmd-1268"
+                      value={cmd}
+                      onChange={(e) => setCmd(e.target.value)}
+                      placeholder="id"
+                    />
+                  </div>
+                ) : null}
+              </div>
+              {preset === "custom" ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="rce-class-b64-1268">自备 class_b64</Label>
+                  <Textarea
+                    id="rce-class-b64-1268"
+                    className="min-h-20 font-mono text-xs"
+                    value={rceClassB64}
+                    onChange={(e) => setRceClassB64(e.target.value)}
+                    placeholder="Base64(.class)"
+                  />
+                </div>
+              ) : null}
+              {preset === "echo" ? (
+                <EchoOptions
+                  engine={engine}
+                  setEngine={setEngine}
+                  cmd={cmd}
+                  setCmd={setCmd}
+                  cmdHeader={cmdHeader}
+                  setCmdHeader={setCmdHeader}
+                />
+              ) : null}
+              {preset === "memshell" ? (
+                <MemShellOptions
+                  value={ms}
+                  onChange={setMs}
+                  config={msConfig}
+                />
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                postgresql_ssrf：file/custom/exec/echo/memshell 统一为远程 XML/JAR
+                投递的自定义载荷；需 HTTP 托管后由目标拉取。
+              </p>
+            </div>
           ) : null}
 
           <CurrencyWrapControls
@@ -1498,7 +1678,8 @@ function Poc1280Panel() {
   );
   const [wrapCurrency, setWrapCurrency] = useState("false");
   const [currencyField, setCurrencyField] = useState("currency");
-  const [echo, setEcho] = useState("false");
+  const [preset, setPreset] = useState<RcePresetMode>("file");
+  const [rceClassB64, setRceClassB64] = useState("");
   const [engine, setEngine] = useState<EchoEngine>("auto");
   const [cmd, setCmd] = useState("id");
   const [cmdHeader, setCmdHeader] = useState("X-Cmd");
@@ -1538,11 +1719,12 @@ function Poc1280Panel() {
         classpath: classpath.trim() || null,
         wrap_currency: wrapCurrency === "true",
         currency_field: currencyField,
-        echo: echo === "true" && ms.enabled !== "true",
+        preset,
+        class_b64: preset === "custom" ? rceClassB64.trim() || undefined : undefined,
         engine,
         cmd: cmd.trim() || "id",
         cmd_header: cmdHeader.trim() || "X-Cmd",
-        ...memShellRequestFields(ms),
+        ...memShellRequestFields(ms, preset === "memshell"),
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
@@ -1686,34 +1868,75 @@ function Poc1280Panel() {
             </div>
           ) : null}
 
-          {ECHO_1280.has(gadget) ? (
-            <EchoFields
-              echo={echo}
-              setEcho={(v) => {
-                setEcho(v);
-                if (v === "true") setMs((prev) => ({ ...prev, enabled: "false" }));
-              }}
-              engine={engine}
-              setEngine={setEngine}
-              cmd={cmd}
-              setCmd={setCmd}
-              cmdHeader={cmdHeader}
-              setCmdHeader={setCmdHeader}
-              disabled={ms.enabled === "true"}
-              hint="postgresql/jython：bean-echo.xml+echo.jar；groovy：evil-echo.jar。需可被目标拉取。"
-            />
-          ) : null}
-
-          {MEMSHELL_1280.has(gadget) ? (
-            <MemShellFields
-              value={ms}
-              onChange={(next) => {
-                setMs(next);
-                if (next.enabled === "true") setEcho("false");
-              }}
-              config={msConfig}
-              hint="postgresql/jython：bean-memshell.xml+memshell.jar；groovy：evil-memshell.jar。与回显互斥。"
-            />
+          {RCE_PRESET_1280.has(gadget) ? (
+            <div className="space-y-4 rounded-lg border border-border/60 p-3">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>RCE 预设</Label>
+                  <Select
+                    value={preset}
+                    onValueChange={(v) => setPreset(v as RcePresetMode)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="file">file（写证明文件）</SelectItem>
+                      <SelectItem value="custom">custom（自备字节码）</SelectItem>
+                      <SelectItem value="exec">exec（自定义命令）</SelectItem>
+                      <SelectItem value="echo">echo（命令回显）</SelectItem>
+                      <SelectItem value="memshell">
+                        memshell（内存马）
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {preset === "exec" ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="rce-cmd-1280">命令</Label>
+                    <Input
+                      id="rce-cmd-1280"
+                      value={cmd}
+                      onChange={(e) => setCmd(e.target.value)}
+                      placeholder="id"
+                    />
+                  </div>
+                ) : null}
+              </div>
+              {preset === "custom" ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="rce-class-b64-1280">自备 class_b64</Label>
+                  <Textarea
+                    id="rce-class-b64-1280"
+                    className="min-h-20 font-mono text-xs"
+                    value={rceClassB64}
+                    onChange={(e) => setRceClassB64(e.target.value)}
+                    placeholder="Base64(.class)"
+                  />
+                </div>
+              ) : null}
+              {preset === "echo" ? (
+                <EchoOptions
+                  engine={engine}
+                  setEngine={setEngine}
+                  cmd={cmd}
+                  setCmd={setCmd}
+                  cmdHeader={cmdHeader}
+                  setCmdHeader={setCmdHeader}
+                />
+              ) : null}
+              {preset === "memshell" ? (
+                <MemShellOptions
+                  value={ms}
+                  onChange={setMs}
+                  config={msConfig}
+                />
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                postgresql/jython：XML+JAR；groovy：evil-*.jar。file / custom /
+                exec / echo / memshell 均为自定义载荷预设，需可被目标拉取。
+              </p>
+            </div>
           ) : null}
 
           <CurrencyWrapControls

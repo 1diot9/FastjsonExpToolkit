@@ -22,6 +22,8 @@ EchoEngineField = Literal[
     "dfs",
 ]
 
+PresetField = Literal["auto", "off", "custom", "touch", "exec", "echo", "memshell"]
+
 
 
 class Poc1247GenerateOptions(BaseModel):
@@ -73,11 +75,32 @@ class Poc1247GenerateOptions(BaseModel):
         False,
         description="json_key 最外层改为 JSONArray 作 key（[{...}]:{}）",
     )
-    echo: bool = Field(False, description="BCEL/H2/MyBatis 自动生成回显类")
-    engine: EchoEngineField = Field("auto", description="回显引擎")
-    cmd: str = Field("id", description="回显默认命令")
-    cmd_header: str = Field("X-Cmd", description="命令请求头")
-    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    preset: PresetField = Field(
+        "auto",
+        description=(
+            "预设字节码：auto=未提供时 exec，已提供则 custom；"
+            "custom/off=自备字节码；touch/exec/echo/memshell=对应生成器"
+        ),
+    )
+    proof_path: Optional[str] = Field(
+        None, description="preset=touch/exec/auto 时的证明文件路径；默认 /tmp/fj1247_<gadget>"
+    )
+    proof_content: Optional[str] = Field(
+        None, description="preset=touch/exec/auto 时写入内容前缀；默认 FJ1247_<GADGET>"
+    )
+    echo: bool = Field(
+        False,
+        description="兼容旧字段：true 等价于 preset=echo（优先于 preset，低于 memshell）",
+    )
+    engine: EchoEngineField = Field("auto", description="回显引擎（preset=echo）")
+    cmd: str = Field(
+        "id", description="回显默认命令 / preset=exec（或 auto）时的执行命令"
+    )
+    cmd_header: str = Field("X-Cmd", description="命令请求头（preset=echo）")
+    memshell: bool = Field(
+        False,
+        description="兼容旧字段：true 等价于 preset=memshell（优先于 echo/preset）",
+    )
     ms_api: str = Field(
         "jar",
         description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
@@ -112,6 +135,7 @@ class Poc1247GenerateResult(BaseModel):
     echo: bool = False
     engine: str = ""
     cmd_header: str = ""
+    preset: str = ""
     class_b64: Optional[str] = None
     bcel_code: Optional[str] = None
     memshell: bool = False
@@ -152,6 +176,7 @@ class Poc1247SendResult(BaseModel):
     echo: bool = False
     engine: str = ""
     cmd_header: str = ""
+    preset: str = ""
     class_b64: Optional[str] = None
     bcel_code: Optional[str] = None
     echo_output: Optional[str] = None

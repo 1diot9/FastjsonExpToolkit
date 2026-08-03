@@ -134,6 +134,14 @@ Backend (Python FastAPI)
 - ⏳ 通用自定义字节码上传 UI；少见组合链补齐
 - ⏳ 版本探测结果 → 推荐 PoC 的一键工作流
 
+### 预设字节码（通用模块）
+
+- ✅ `poc/bytecode/`：`resolve_bytecode_payload` 统一 custom / touch / exec / echo / memshell
+- ✅ `vendor/bytecode-gen` → `poc/bytecode/jars/bytecode-gen.jar`（touch/exec + BCEL/ser）
+- ✅ `vendor/echo-gen`（jEG 包装）→ `poc/echo/jars/echo-gen.jar`
+- ✅ `vendor/memshell-gen` → `poc/memshell/jars/memshell-gen.jar`
+- ✅ 前端 `BytecodePresetFields`：custom 展开自备字节码输入
+
 ### Phase 4 — 回显
 
 - ✅ 通用回显模块 `poc/echo/`（参考 pen4uin/java-echo-generator）

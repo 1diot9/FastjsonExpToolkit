@@ -509,6 +509,9 @@ export type Poc1247Request = {
   currency_field?: string;
   json_key_with_type?: boolean;
   json_key_as_array?: boolean;
+  preset?: "auto" | "custom" | "off" | "touch" | "exec" | "echo" | "memshell";
+  proof_path?: string | null;
+  proof_content?: string | null;
   echo?: boolean;
   engine?: EchoEngine;
   cmd?: string;
@@ -544,6 +547,7 @@ export type Poc1247Result = {
   echo?: boolean;
   engine?: string;
   cmd_header?: string;
+  preset?: string;
   class_b64?: string | null;
   bcel_code?: string | null;
   echo_output?: string | null;
@@ -586,6 +590,8 @@ export type Poc1268Request = {
   socket_factory_arg?: string | null;
   wrap_currency?: boolean;
   currency_field?: string;
+  preset?: "file" | "custom" | "exec" | "echo" | "memshell";
+  class_b64?: string;
   echo?: boolean;
   engine?: EchoEngine;
   cmd?: string;
@@ -643,6 +649,8 @@ export type Poc1280Request = {
   classpath?: string | null;
   wrap_currency?: boolean;
   currency_field?: string;
+  preset?: "file" | "custom" | "exec" | "echo" | "memshell";
+  class_b64?: string;
   echo?: boolean;
   engine?: EchoEngine;
   cmd?: string;

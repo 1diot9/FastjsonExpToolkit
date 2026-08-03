@@ -24,3 +24,11 @@ vendor/memshell-gen/target/
 src/fastjson_toolkit/poc/memshell/jars/*.jar
 !src/fastjson_toolkit/poc/memshell/jars/.gitkeep
 
+# bytecode-gen / echo-gen fat jars（用各自 vendor/*/build.ps1 构建）
+vendor/bytecode-gen/target/
+vendor/echo-gen/target/
+src/fastjson_toolkit/poc/bytecode/jars/*.jar
+!src/fastjson_toolkit/poc/bytecode/jars/.gitkeep
+src/fastjson_toolkit/poc/echo/jars/*.jar
+!src/fastjson_toolkit/poc/echo/jars/.gitkeep
+

