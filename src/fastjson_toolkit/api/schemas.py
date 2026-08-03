@@ -136,13 +136,35 @@ class Poc16723Request(BaseModel):
         description="读证明文件的 docker 容器名；空则禁用",
     )
     reuse_type: Optional[str] = Field(None, description="复用已命中的 @type")
-    memshell: bool = Field(False, description="注入内存马（需 MemShellParty）")
-    ms_api: str = "http://127.0.0.1:8091"
+    memshell: bool = Field(
+        False, description="注入内存马（默认内置 memshell-gen.jar；也可指定 HTTP boot）"
+    )
+    ms_api: str = Field(
+        "jar",
+        description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
+    )
     ms_server: str = "Undertow"
     ms_tool: str = "Command"
     ms_type: str = "Filter"
     ms_path: str = "/*"
     ms_jdk: str = "8"
+
+
+class MemShellGenerateRequest(BaseModel):
+    """独立生成内存马（不经 Fastjson 链）。"""
+
+    backend: str = Field(
+        "jar",
+        description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
+    )
+    server: str = Field("Undertow", description="中间件类型")
+    tool: str = Field("Command", description="C2/管理工具")
+    shell_type: str = Field("Filter", description="马类型")
+    path: str = Field("/*", description="urlPattern")
+    jdk: str = Field("8", description="目标 JDK 大版本")
+    static_initialize: bool = Field(
+        False, description="BCEL/H2 类加载场景建议 true；Spring XML / Groovy 用 false"
+    )
 
 
 class Poc1247Request(BaseModel):
@@ -187,6 +209,16 @@ class Poc1247Request(BaseModel):
     engine: str = Field("auto", description="回显引擎")
     cmd: str = Field("id", description="回显默认命令")
     cmd_header: str = Field("X-Cmd", description="命令请求头")
+    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    ms_api: str = Field(
+        "jar",
+        description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
+    )
+    ms_server: str = "Undertow"
+    ms_tool: str = "Command"
+    ms_type: str = "Filter"
+    ms_path: str = "/*"
+    ms_jdk: str = "8"
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后叠加的 WAF 变换 id（见 GET /api/waf/techniques）",
@@ -231,7 +263,17 @@ class Poc1268Request(BaseModel):
     engine: str = Field("auto", description="回显引擎")
     cmd: str = Field("id", description="回显默认命令")
     cmd_header: str = Field("X-Cmd", description="命令请求头")
-    attack_base: Optional[str] = Field(None, description="回显资源托管基址")
+    attack_base: Optional[str] = Field(None, description="回显/内存马资源托管基址")
+    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    ms_api: str = Field(
+        "jar",
+        description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
+    )
+    ms_server: str = "Undertow"
+    ms_tool: str = "Command"
+    ms_type: str = "Filter"
+    ms_path: str = "/*"
+    ms_jdk: str = "8"
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后叠加的 WAF 变换 id（见 GET /api/waf/techniques）",
@@ -291,7 +333,17 @@ class Poc1280Request(BaseModel):
     engine: str = Field("auto", description="回显引擎")
     cmd: str = Field("id", description="回显默认命令")
     cmd_header: str = Field("X-Cmd", description="命令请求头")
-    attack_base: Optional[str] = Field(None, description="回显资源托管基址")
+    attack_base: Optional[str] = Field(None, description="回显/内存马资源托管基址")
+    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    ms_api: str = Field(
+        "jar",
+        description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
+    )
+    ms_server: str = "Undertow"
+    ms_tool: str = "Command"
+    ms_type: str = "Filter"
+    ms_path: str = "/*"
+    ms_jdk: str = "8"
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后叠加的 WAF 变换 id（多步链逐步应用）",

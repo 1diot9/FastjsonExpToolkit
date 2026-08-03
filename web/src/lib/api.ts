@@ -390,6 +390,12 @@ export type Poc16723Request = {
   docker_container?: string;
   reuse_type?: string | null;
   memshell?: boolean;
+  ms_api?: string;
+  ms_server?: string;
+  ms_tool?: string;
+  ms_type?: string;
+  ms_path?: string;
+  ms_jdk?: string;
 };
 
 export type Poc16723Result = {
@@ -403,6 +409,58 @@ export type Poc16723Result = {
   notes: string[];
   raw: Record<string, unknown>;
 };
+
+export type MemShellFieldsValue = {
+  memshell: boolean;
+  ms_api: string;
+  ms_server: string;
+  ms_tool: string;
+  ms_type: string;
+  ms_path: string;
+  ms_jdk: string;
+};
+
+export type MemShellConfig = Record<string, Record<string, string[]>>;
+
+export async function fetchMemshellConfig(
+  backend = "jar",
+): Promise<MemShellConfig> {
+  const q = new URLSearchParams({ backend });
+  const res = await apiFetch(`/api/memshell/config?${q}`);
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export type MemShellGenerateRequest = {
+  backend?: string;
+  server?: string;
+  tool?: string;
+  shell_type?: string;
+  path?: string;
+  jdk?: string;
+  static_initialize?: boolean;
+};
+
+export type MemShellGenerateResult = {
+  ok: boolean;
+  memshell_info: Record<string, unknown>;
+  memshell_connect: string;
+  injector_b64: string;
+  injector_class: string;
+  shell_class: string;
+};
+
+export async function generateMemshell(
+  body: MemShellGenerateRequest,
+): Promise<MemShellGenerateResult> {
+  const res = await apiFetch("/api/memshell/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
 
 export async function runPoc16723(
   body: Poc16723Request,
@@ -455,6 +513,13 @@ export type Poc1247Request = {
   engine?: EchoEngine;
   cmd?: string;
   cmd_header?: string;
+  memshell?: boolean;
+  ms_api?: string;
+  ms_server?: string;
+  ms_tool?: string;
+  ms_type?: string;
+  ms_path?: string;
+  ms_jdk?: string;
   waf_techniques?: string[];
   waf_options?: WafOptions;
   target?: string;
@@ -482,6 +547,9 @@ export type Poc1247Result = {
   class_b64?: string | null;
   bcel_code?: string | null;
   echo_output?: string | null;
+  memshell?: boolean;
+  memshell_info?: Record<string, unknown> | null;
+  memshell_connect?: string | null;
 };
 
 export async function listPoc1247Gadgets(): Promise<Poc1247Gadget[]> {
@@ -523,6 +591,13 @@ export type Poc1268Request = {
   cmd?: string;
   cmd_header?: string;
   attack_base?: string | null;
+  memshell?: boolean;
+  ms_api?: string;
+  ms_server?: string;
+  ms_tool?: string;
+  ms_type?: string;
+  ms_path?: string;
+  ms_jdk?: string;
   waf_techniques?: string[];
   waf_options?: WafOptions;
   target?: string;
@@ -573,6 +648,13 @@ export type Poc1280Request = {
   cmd?: string;
   cmd_header?: string;
   attack_base?: string | null;
+  memshell?: boolean;
+  ms_api?: string;
+  ms_server?: string;
+  ms_tool?: string;
+  ms_type?: string;
+  ms_path?: string;
+  ms_jdk?: string;
   waf_techniques?: string[];
   waf_options?: WafOptions;
   target?: string;

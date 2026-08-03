@@ -40,8 +40,13 @@ class Poc16723Options(BaseModel):
     reuse_type: Optional[str] = Field(
         None, description="复用已命中的 @type，跳过编 jar / 爆破"
     )
-    memshell: bool = Field(False, description="注入内存马（依赖 MemShellParty）")
-    ms_api: str = "http://127.0.0.1:8091"
+    memshell: bool = Field(
+        False, description="注入内存马（默认内置 memshell-gen.jar；也可指定 HTTP boot）"
+    )
+    ms_api: str = Field(
+        "jar",
+        description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
+    )
     ms_server: str = "Undertow"
     ms_tool: str = "Command"
     ms_type: str = "Filter"

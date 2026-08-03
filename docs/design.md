@@ -62,7 +62,7 @@ Backend (Python FastAPI)
 - Jackson / Gson / Hutool / org.json → `is_fastjson=false`
 - autoType 开启端点可走 CEYE DNS 确认
 - 版本探测：本地靶场 Fastjson 1.2.83 可由 offline + 1.2.83 探针收敛
-- 证明 PoC：`scripts/lab_test_1247_gadgets.py` / `1268` / `1280` 可对专用依赖靶场落盘验证
+- 证明 PoC：`tests/lab/lab_test_1247_gadgets.py` / `1268` / `1280` 可对专用依赖靶场落盘验证
 
 ### 3.3 Web 前后端
 
@@ -148,15 +148,15 @@ Backend (Python FastAPI)
 
 ### Phase 5 — 内存马注入
 
-- 对接 MemShellParty：中间件类型、Shell 类型、密码/路径、打包格式
-- 生成字节码后经 Fastjson 链投递
-- Web：参数表单 + 生成结果（严格使用 shadcn 组件）
+- ✅ 内置 `vendor/memshell-gen`（MemShellParty SDK fat jar，按需 `java -jar`，无需常驻 boot）
+- ✅ 公共模块 `poc/memshell/`：框架 / C2 / JDK 参数透传；投递适配 47 BCEL·H2、68/80 Spring XML·Groovy、16723
+- ✅ Web PoC 页 `MemShellFields` + 连接信息；API：`GET/POST /api/memshell/*`
+- 构建：`vendor/memshell-gen/build.ps1`（或 `build.sh`）→ 安装到 `poc/memshell/jars/`
 
 ### Phase 6 — Web 整合与联调
 
 - 打通识别 → 版本 → 期望类/依赖 → PoC/回显 → 内存马工作流
-- FastAPI 补齐 `/api/memshell` 等
-- Docker 靶场扩展：回显 / 内存马验证环境
+- Docker 靶场扩展：内存马验证环境 / Probe 自动识别中间件
 
 ---
 
@@ -173,16 +173,16 @@ Backend (Python FastAPI)
 
 ```
 ├── scripts/start.* / stop.*     # 一键启停 Web（默认后端 --reload，不含靶场）
-├── scripts/lab_test_*.py        # 各版本 gadget 靶场落盘验证
 ├── docs/design.md               # 本文档
-├── AGENTS.md                    # Agent / shadcn 约定
+├── AGENTS.md                    # Agent 约定
 ├── src/fastjson_toolkit/        # 后端核心
 │   ├── detect / version / expect / deps
 │   ├── poc/（v1_2_47 / v1_2_68 / v1_2_80 / cve_2026_16723 / getter）
 │   ├── waf / dnslog / http / api / cli
 ├── web/                         # Next.js + shadcn
 ├── lab/                         # Docker 靶场（指纹 / 版本矩阵 / 1247 / 1268 / 1280 / 16723）
-├── tests/                       # 单元测试
+├── tests/                       # pytest 单元测试
+├── tests/lab/                   # 靶场落盘验证 / 版本矩阵压测 / DNS 探针实验
 └── .env.example                 # CEYE 等配置模板
 ```
 

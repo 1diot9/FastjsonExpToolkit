@@ -18,3 +18,9 @@ web/out/
 .idea/
 *.iml
 .DS_Store
+
+# MemShellParty fat jar（约 40MB+；用 vendor/memshell-gen 构建）
+vendor/memshell-gen/target/
+src/fastjson_toolkit/poc/memshell/jars/*.jar
+!src/fastjson_toolkit/poc/memshell/jars/.gitkeep
+

@@ -33,6 +33,7 @@ import {
 } from "@/components/waf-controls";
 import {
   ECHO_ENGINES,
+  fetchMemshellConfig,
   listPoc1247Gadgets,
   listPoc1268Gadgets,
   listPoc1280Gadgets,
@@ -41,6 +42,7 @@ import {
   runPoc1280,
   runPoc16723,
   type EchoEngine,
+  type MemShellConfig,
   type Poc1247Gadget,
   type Poc1247Result,
   type Poc1268Gadget,
@@ -62,6 +64,57 @@ const ECHO_1247 = new Set([
 const ECHO_1268 = new Set(["postgresql_ssrf"]);
 const ECHO_1280 = new Set(["postgresql", "jython", "groovy"]);
 
+/** 与回显同一批可投递字节码的链（1.2.47 不含 jdbc_rowset） */
+const MEMSHELL_1247 = new Set([
+  "bcel_tomcat_dbcp",
+  "bcel_tomcat_dbcp2",
+  "bcel_commons_dbcp",
+  "bcel_commons_dbcp2",
+  "mybatis_bcel",
+  "h2_jdbc",
+]);
+const MEMSHELL_1268 = new Set(["postgresql_ssrf"]);
+const MEMSHELL_1280 = new Set(["postgresql", "jython", "groovy"]);
+
+const MS_FALLBACK_SERVERS = ["Undertow", "Tomcat", "SpringWebMvc"];
+const MS_FALLBACK_TOOLS = ["Command", "Godzilla", "Behinder"];
+const MS_FALLBACK_TYPES = ["Filter", "Listener", "Interceptor"];
+const MS_JDK_OPTIONS = ["6", "8", "9", "11", "17", "21"];
+
+type MemShellState = {
+  enabled: string;
+  api: string;
+  server: string;
+  tool: string;
+  type: string;
+  path: string;
+  jdk: string;
+};
+
+function emptyMemShellState(): MemShellState {
+  return {
+    enabled: "false",
+    api: "jar",
+    server: "Undertow",
+    tool: "Command",
+    type: "Filter",
+    path: "/*",
+    jdk: "8",
+  };
+}
+
+function memShellRequestFields(ms: MemShellState) {
+  return {
+    memshell: ms.enabled === "true",
+    ms_api: ms.api.trim() || "jar",
+    ms_server: ms.server,
+    ms_tool: ms.tool,
+    ms_type: ms.type,
+    ms_path: ms.path.trim() || "/*",
+    ms_jdk: ms.jdk,
+  };
+}
+
 function EchoFields(props: {
   echo: string;
   setEcho: (v: string) => void;
@@ -72,13 +125,18 @@ function EchoFields(props: {
   cmdHeader: string;
   setCmdHeader: (v: string) => void;
   hint?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="space-y-4 rounded-lg border border-border/60 p-3">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label>命令回显</Label>
-          <Select value={props.echo} onValueChange={props.setEcho}>
+          <Select
+            value={props.echo}
+            onValueChange={props.setEcho}
+            disabled={props.disabled}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -93,7 +151,7 @@ function EchoFields(props: {
           <Select
             value={props.engine}
             onValueChange={(v) => props.setEngine(v as EchoEngine)}
-            disabled={props.echo !== "true"}
+            disabled={props.disabled || props.echo !== "true"}
           >
             <SelectTrigger>
               <SelectValue />
@@ -108,7 +166,7 @@ function EchoFields(props: {
           </Select>
         </div>
       </div>
-      {props.echo === "true" ? (
+      {props.echo === "true" && !props.disabled ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="echo-cmd">命令</Label>
@@ -133,6 +191,197 @@ function EchoFields(props: {
       ) : null}
     </div>
   );
+}
+
+function MemShellFields(props: {
+  value: MemShellState;
+  onChange: (next: MemShellState) => void;
+  config: MemShellConfig | null;
+  hint?: string;
+}) {
+  const { value, onChange, config } = props;
+  const servers =
+    config && Object.keys(config).length > 0
+      ? Object.keys(config)
+      : MS_FALLBACK_SERVERS;
+  const tools =
+    config && value.server && config[value.server]
+      ? Object.keys(config[value.server])
+      : MS_FALLBACK_TOOLS;
+  const types =
+    config && value.server && config[value.server]?.[value.tool]
+      ? config[value.server][value.tool]
+      : MS_FALLBACK_TYPES;
+
+  function patch(partial: Partial<MemShellState>) {
+    onChange({ ...value, ...partial });
+  }
+
+  return (
+    <div className="space-y-4 rounded-lg border border-border/60 p-3">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-2">
+          <Label>内存马</Label>
+          <Select
+            value={value.enabled}
+            onValueChange={(v) => patch({ enabled: v })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="false">关闭</SelectItem>
+              <SelectItem value="true">开启</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="ms-api">生成后端</Label>
+          <Input
+            id="ms-api"
+            value={value.api}
+            onChange={(e) => patch({ api: e.target.value })}
+            disabled={value.enabled !== "true"}
+            placeholder="jar 或 http://127.0.0.1:8091"
+          />
+        </div>
+      </div>
+      {value.enabled === "true" ? (
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-2">
+              <Label>中间件</Label>
+              <Select
+                value={value.server}
+                onValueChange={(server) => {
+                  const nextTools =
+                    config && config[server]
+                      ? Object.keys(config[server])
+                      : MS_FALLBACK_TOOLS;
+                  const tool = nextTools.includes(value.tool)
+                    ? value.tool
+                    : nextTools[0] || "Command";
+                  const nextTypes =
+                    config && config[server]?.[tool]
+                      ? config[server][tool]
+                      : MS_FALLBACK_TYPES;
+                  const type = nextTypes.includes(value.type)
+                    ? value.type
+                    : nextTypes[0] || "Filter";
+                  patch({ server, tool, type });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {servers.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>工具</Label>
+              <Select
+                value={value.tool}
+                onValueChange={(tool) => {
+                  const nextTypes =
+                    config && config[value.server]?.[tool]
+                      ? config[value.server][tool]
+                      : MS_FALLBACK_TYPES;
+                  const type = nextTypes.includes(value.type)
+                    ? value.type
+                    : nextTypes[0] || "Filter";
+                  patch({ tool, type });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tools.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>类型</Label>
+              <Select
+                value={value.type}
+                onValueChange={(type) => patch({ type })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {types.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="ms-path">urlPattern</Label>
+              <Input
+                id="ms-path"
+                value={value.path}
+                onChange={(e) => patch({ path: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>目标 JDK</Label>
+              <Select
+                value={value.jdk}
+                onValueChange={(jdk) => patch({ jdk })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MS_JDK_OPTIONS.map((j) => (
+                    <SelectItem key={j} value={j}>
+                      {j}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </>
+      ) : null}
+      {props.hint ? (
+        <p className="text-xs text-muted-foreground">{props.hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function useMemShellConfig(backend: string) {
+  const [config, setConfig] = useState<MemShellConfig | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchMemshellConfig(backend.startsWith("http") ? backend : "jar")
+      .then((data) => {
+        if (!cancelled) setConfig(data);
+      })
+      .catch(() => {
+        if (!cancelled) setConfig(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [backend]);
+  return config;
 }
 function CurrencyWrapControls({
   wrap,
@@ -192,8 +441,10 @@ function Poc16723Panel() {
     "cve-2026-16723-undertow",
   );
   const [echo, setEcho] = useState("true");
+  const [ms, setMs] = useState<MemShellState>(emptyMemShellState);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Poc16723Result | null>(null);
+  const msConfig = useMemShellConfig(ms.api);
 
   async function onRun() {
     setLoading(true);
@@ -205,10 +456,11 @@ function Poc16723Panel() {
         host: host.trim(),
         port: Number(port) || 9192,
         cmd: cmd.trim() || "id",
-        echo: echo === "true",
+        echo: echo === "true" && ms.enabled !== "true",
         engine,
         json_path: jsonPath.trim() || "/json",
         docker_container: dockerContainer.trim(),
+        ...memShellRequestFields(ms),
       });
       setResult(data);
       if (data.ok) toast.success("证明成功");
@@ -260,7 +512,14 @@ function Poc16723Panel() {
             </div>
             <div className="grid gap-2">
               <Label>回显</Label>
-              <Select value={echo} onValueChange={setEcho}>
+              <Select
+                value={echo}
+                onValueChange={(v) => {
+                  setEcho(v);
+                  if (v === "true") setMs((prev) => ({ ...prev, enabled: "false" }));
+                }}
+                disabled={ms.enabled === "true"}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -299,6 +558,7 @@ function Poc16723Panel() {
               <Select
                 value={engine}
                 onValueChange={(v) => setEngine(v as EchoEngine)}
+                disabled={ms.enabled === "true" || echo !== "true"}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -332,6 +592,15 @@ function Poc16723Panel() {
               />
             </div>
           </div>
+          <MemShellFields
+            value={ms}
+            onChange={(next) => {
+              setMs(next);
+              if (next.enabled === "true") setEcho("false");
+            }}
+            config={msConfig}
+            hint="默认 jar=内置 memshell-gen.jar；也可填 MemShellParty HTTP 地址。与回显互斥。"
+          />
           <Separator />
           <Button onClick={onRun} disabled={loading} className="w-full sm:w-auto">
             {loading ? (
@@ -409,11 +678,13 @@ function Poc1247Panel() {
   const [engine, setEngine] = useState<EchoEngine>("auto");
   const [cmd, setCmd] = useState("id");
   const [cmdHeader, setCmdHeader] = useState("X-Cmd");
+  const [ms, setMs] = useState<MemShellState>(emptyMemShellState);
   const [target, setTarget] = useState("http://127.0.0.1:18247/api/fastjson");
   const [send, setSend] = useState("false");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Poc1247Result | null>(null);
+  const msConfig = useMemShellConfig(ms.api);
 
   useEffect(() => {
     listPoc1247Gadgets()
@@ -443,10 +714,11 @@ function Poc1247Panel() {
         currency_field: currencyField,
         json_key_with_type: jsonKeyWithType === "true",
         json_key_as_array: jsonKeyAsArray === "true",
-        echo: echo === "true",
+        echo: echo === "true" && ms.enabled !== "true",
         engine,
         cmd: cmd.trim() || "id",
         cmd_header: cmdHeader.trim() || "X-Cmd",
+        ...memShellRequestFields(ms),
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
@@ -455,6 +727,7 @@ function Poc1247Panel() {
       setResult(data);
       if (data.ok) {
         if (data.echo_output) toast.success("回显成功");
+        else if (data.memshell) toast.success("已生成内存马 payload");
         else toast.success(doSend ? "已发送" : "已生成");
       } else toast.error(data.summary || "失败");
     } catch (err) {
@@ -583,14 +856,30 @@ function Poc1247Panel() {
           {ECHO_1247.has(gadget) ? (
             <EchoFields
               echo={echo}
-              setEcho={setEcho}
+              setEcho={(v) => {
+                setEcho(v);
+                if (v === "true") setMs((prev) => ({ ...prev, enabled: "false" }));
+              }}
               engine={engine}
               setEngine={setEngine}
               cmd={cmd}
               setCmd={setCmd}
               cmdHeader={cmdHeader}
               setCmdHeader={setCmdHeader}
+              disabled={ms.enabled === "true"}
               hint="参考 java-echo-generator；JDK12+ 用 Unsafe 反射。开启后自动编译回显类填入 BCEL/H2（需本机 javac）。"
+            />
+          ) : null}
+
+          {MEMSHELL_1247.has(gadget) ? (
+            <MemShellFields
+              value={ms}
+              onChange={(next) => {
+                setMs(next);
+                if (next.enabled === "true") setEcho("false");
+              }}
+              config={msConfig}
+              hint="BCEL/H2/MyBatis 注入内存马（不含 jdbc_rowset）；与回显互斥；默认内置 jar。"
             />
           ) : null}
 
@@ -787,6 +1076,16 @@ function Poc1247Panel() {
                   />
                 </div>
               ) : null}
+              {result.memshell_connect ? (
+                <div className="grid gap-2">
+                  <Label>内存马连接信息</Label>
+                  <Textarea
+                    readOnly
+                    className="min-h-36 font-mono text-xs"
+                    value={result.memshell_connect}
+                  />
+                </div>
+              ) : null}
               {result.notes.length > 0 ? (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                   {result.notes.slice(0, 4).map((n) => (
@@ -822,11 +1121,13 @@ function Poc1268Panel() {
   const [engine, setEngine] = useState<EchoEngine>("auto");
   const [cmd, setCmd] = useState("id");
   const [cmdHeader, setCmdHeader] = useState("X-Cmd");
+  const [ms, setMs] = useState<MemShellState>(emptyMemShellState);
   const [target, setTarget] = useState("http://127.0.0.1:18268/api/fastjson");
   const [send, setSend] = useState("false");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Poc1268Result | null>(null);
+  const msConfig = useMemShellConfig(ms.api);
 
   useEffect(() => {
     listPoc1268Gadgets()
@@ -857,10 +1158,11 @@ function Poc1268Panel() {
         socket_factory_arg: socketFactoryArg.trim() || null,
         wrap_currency: wrapCurrency === "true",
         currency_field: currencyField,
-        echo: echo === "true",
+        echo: echo === "true" && ms.enabled !== "true",
         engine,
         cmd: cmd.trim() || "id",
         cmd_header: cmdHeader.trim() || "X-Cmd",
+        ...memShellRequestFields(ms),
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
@@ -869,6 +1171,7 @@ function Poc1268Panel() {
       setResult(data);
       if (data.ok) {
         if (data.echo_output) toast.success("回显成功");
+        else if (data.memshell) toast.success("已生成内存马 payload");
         else toast.success(doSend ? "已发送" : "已生成");
       } else toast.error(data.summary || "失败");
     } catch (err) {
@@ -1012,14 +1315,30 @@ function Poc1268Panel() {
           {ECHO_1268.has(gadget) ? (
             <EchoFields
               echo={echo}
-              setEcho={setEcho}
+              setEcho={(v) => {
+                setEcho(v);
+                if (v === "true") setMs((prev) => ({ ...prev, enabled: "false" }));
+              }}
               engine={engine}
               setEngine={setEngine}
               cmd={cmd}
               setCmd={setCmd}
               cmdHeader={cmdHeader}
               setCmdHeader={setCmdHeader}
+              disabled={ms.enabled === "true"}
               hint="postgresql_ssrf：生成 bean-echo.xml + echo.jar，需 HTTP 托管后由目标拉取。"
+            />
+          ) : null}
+
+          {MEMSHELL_1268.has(gadget) ? (
+            <MemShellFields
+              value={ms}
+              onChange={(next) => {
+                setMs(next);
+                if (next.enabled === "true") setEcho("false");
+              }}
+              config={msConfig}
+              hint="postgresql_ssrf：生成 bean-memshell.xml + memshell.jar；与回显互斥；默认内置 jar。"
             />
           ) : null}
 
@@ -1145,6 +1464,16 @@ function Poc1268Panel() {
                   />
                 </div>
               ) : null}
+              {result.memshell_connect ? (
+                <div className="grid gap-2">
+                  <Label>内存马连接信息</Label>
+                  <Textarea
+                    readOnly
+                    className="min-h-36 font-mono text-xs"
+                    value={result.memshell_connect}
+                  />
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         ) : null}
@@ -1173,12 +1502,14 @@ function Poc1280Panel() {
   const [engine, setEngine] = useState<EchoEngine>("auto");
   const [cmd, setCmd] = useState("id");
   const [cmdHeader, setCmdHeader] = useState("X-Cmd");
+  const [ms, setMs] = useState<MemShellState>(emptyMemShellState);
   const [target, setTarget] = useState("http://127.0.0.1:18280/api/fastjson");
   const [send, setSend] = useState("false");
   const [resetCache, setResetCache] = useState("true");
   const [waf, setWaf] = useState<WafControlValue>(emptyWafControlValue);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Poc1280Result | null>(null);
+  const msConfig = useMemShellConfig(ms.api);
 
   useEffect(() => {
     listPoc1280Gadgets()
@@ -1207,10 +1538,11 @@ function Poc1280Panel() {
         classpath: classpath.trim() || null,
         wrap_currency: wrapCurrency === "true",
         currency_field: currencyField,
-        echo: echo === "true",
+        echo: echo === "true" && ms.enabled !== "true",
         engine,
         cmd: cmd.trim() || "id",
         cmd_header: cmdHeader.trim() || "X-Cmd",
+        ...memShellRequestFields(ms),
         waf_techniques: waf.techniques,
         waf_options: waf.techniques.length ? waf.options : undefined,
         target: target.trim(),
@@ -1220,6 +1552,7 @@ function Poc1280Panel() {
       setResult(data);
       if (data.ok) {
         if (data.echo_output) toast.success("回显成功");
+        else if (data.memshell) toast.success("已生成内存马 payload");
         else toast.success(doSend ? "已按步发送" : "已生成");
       } else toast.error(data.summary || "失败");
     } catch (err) {
@@ -1356,14 +1689,30 @@ function Poc1280Panel() {
           {ECHO_1280.has(gadget) ? (
             <EchoFields
               echo={echo}
-              setEcho={setEcho}
+              setEcho={(v) => {
+                setEcho(v);
+                if (v === "true") setMs((prev) => ({ ...prev, enabled: "false" }));
+              }}
               engine={engine}
               setEngine={setEngine}
               cmd={cmd}
               setCmd={setCmd}
               cmdHeader={cmdHeader}
               setCmdHeader={setCmdHeader}
+              disabled={ms.enabled === "true"}
               hint="postgresql/jython：bean-echo.xml+echo.jar；groovy：evil-echo.jar。需可被目标拉取。"
+            />
+          ) : null}
+
+          {MEMSHELL_1280.has(gadget) ? (
+            <MemShellFields
+              value={ms}
+              onChange={(next) => {
+                setMs(next);
+                if (next.enabled === "true") setEcho("false");
+              }}
+              config={msConfig}
+              hint="postgresql/jython：bean-memshell.xml+memshell.jar；groovy：evil-memshell.jar。与回显互斥。"
             />
           ) : null}
 
@@ -1513,6 +1862,16 @@ function Poc1280Panel() {
                     readOnly
                     className="min-h-28 font-mono text-xs"
                     value={result.echo_output}
+                  />
+                </div>
+              ) : null}
+              {result.memshell_connect ? (
+                <div className="grid gap-2">
+                  <Label>内存马连接信息</Label>
+                  <Textarea
+                    readOnly
+                    className="min-h-36 font-mono text-xs"
+                    value={result.memshell_connect}
                   />
                 </div>
               ) : null}

