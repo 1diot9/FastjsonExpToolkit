@@ -46,7 +46,7 @@ Backend (Python FastAPI)
 | 期望类引擎 | `src/fastjson_toolkit/expect/`：Feature `@type` + 空键语法，判断是否绑定期望类 |
 | 判定策略 | 仅强特征可判定 Fastjson；差异探针不单独定论，避免 Gson/Hutool 误报 |
 | CEYE DNSLog | `hpdth2.ceye.io` + API 轮询确认出网（`.env` 配置 token） |
-| WAF 绕过 | `src/fastjson_toolkit/waf/`：unicode/hex/`\u+`、多逗号、key `_`/`-`、填充、URL 编码；可叠到 PoC 生成 |
+| WAF 绕过 | `src/fastjson_toolkit/waf/`：unicode/hex/`\u+`、Ghost Bits（`\x4_` / Unicode 数字 / 高位嵌入）、多逗号、key `_`/`-`、填充、URL 编码；可叠到 PoC 生成 |
 | Getter 触发 | `src/fastjson_toolkit/poc/getter.py`：`ref` / `json_key` / `currency` / `currency_json_key`；业务点有期望类时套 Currency |
 | ≤1.2.47 PoC | `poc/v1_2_47/`：Class 缓存绕过（JdbcRowSet / BCEL×4 / C3P0 / MyBatis / H2） |
 | ≤1.2.68 PoC | `poc/v1_2_68/`：AutoCloseable expectClass（JDK 写/截断、commons-io、MySQL/PG） |

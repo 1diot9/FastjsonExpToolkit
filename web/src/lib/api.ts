@@ -559,6 +559,9 @@ export type WafOptions = {
   pad_size?: number;
   pad_char?: string;
   pad_key?: string;
+  hex_ghost_filler?: string;
+  unicode_digit_script?: string;
+  ghost_k?: number;
 };
 
 export type Poc1247Gadget = {

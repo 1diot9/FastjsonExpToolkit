@@ -298,8 +298,10 @@ def create_mcp(*, streamable_http_path: str = "/") -> FastMCP:
             Field(
                 description=(
                     "生成后叠加的 WAF 变换 id 列表，可多选："
-                    "unicode / hex / unicode_hex / unicode_plus / multi_comma / "
-                    "key_underscore / key_hyphen / key_mixed / pad / url_value。"
+                    "unicode / hex / unicode_hex / unicode_plus / "
+                    "hex_ghost / unicode_digit / ghost_bits / "
+                    "multi_comma / key_underscore / key_hyphen / key_mixed / "
+                    "pad / url_value。"
                     "完整说明见 poc_catalog.waf_techniques。默认 null。"
                 )
             ),

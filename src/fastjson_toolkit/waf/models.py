@@ -39,6 +39,22 @@ class WafOptions(BaseModel):
     pad_size: int = Field(20000, ge=0, le=500_000, description="填充字符数")
     pad_char: str = Field("a", min_length=1, max_length=1, description="填充字符")
     pad_key: str = Field("f", min_length=1, description="填充字段名")
+    hex_ghost_filler: str = Field(
+        "_",
+        min_length=1,
+        max_length=1,
+        description=r"hex_ghost 零半字节填充符（须非 0-9A-Fa-f 且码点 <103，如 _ / J）",
+    )
+    unicode_digit_script: str = Field(
+        "fullwidth",
+        description="unicode_digit 数字字形：fullwidth | thai | gurmukhi",
+    )
+    ghost_k: int = Field(
+        1,
+        ge=1,
+        le=255,
+        description="ghost_bits 高字节 k（chr((k<<8)|b)；避开代理区 0xD8–0xDF）",
+    )
 
 
 class WafVariant(BaseModel):

@@ -45,6 +45,9 @@ export default function WafPage() {
   const [padSize, setPadSize] = useState("20000");
   const [padKey, setPadKey] = useState("f");
   const [includeTypeKey, setIncludeTypeKey] = useState(false);
+  const [hexGhostFiller, setHexGhostFiller] = useState("_");
+  const [unicodeDigitScript, setUnicodeDigitScript] = useState("fullwidth");
+  const [ghostK, setGhostK] = useState("1");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<WafResult | null>(null);
 
@@ -94,6 +97,9 @@ export default function WafPage() {
           pad_size: Number(padSize) || 20000,
           pad_key: padKey.trim() || "f",
           include_type_key: includeTypeKey,
+          hex_ghost_filler: hexGhostFiller || "_",
+          unicode_digit_script: unicodeDigitScript || "fullwidth",
+          ghost_k: Number(ghostK) || 1,
         },
       });
       setResult(data);
@@ -196,6 +202,32 @@ export default function WafPage() {
                   id="pad-key"
                   value={padKey}
                   onChange={(e) => setPadKey(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hex-ghost-filler">hex_ghost 填充符</Label>
+                <Input
+                  id="hex-ghost-filler"
+                  maxLength={1}
+                  value={hexGhostFiller}
+                  onChange={(e) => setHexGhostFiller(e.target.value.slice(0, 1) || "_")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="unicode-digit-script">unicode_digit 字形</Label>
+                <Input
+                  id="unicode-digit-script"
+                  placeholder="fullwidth|thai|gurmukhi"
+                  value={unicodeDigitScript}
+                  onChange={(e) => setUnicodeDigitScript(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ghost-k">ghost_bits 高字节 k</Label>
+                <Input
+                  id="ghost-k"
+                  value={ghostK}
+                  onChange={(e) => setGhostK(e.target.value)}
                 />
               </div>
             </div>

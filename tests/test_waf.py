@@ -18,6 +18,9 @@ def test_list_techniques():
         "hex",
         "unicode_hex",
         "unicode_plus",
+        "hex_ghost",
+        "unicode_digit",
+        "ghost_bits",
         "multi_comma",
         "key_underscore",
         "key_hyphen",
@@ -39,6 +42,60 @@ def test_unicode_plus():
     assert r"\u+40\u+74\u+79\u+70\u+65" in out
     assert r"\u+65" in out  # e
     assert "AutoCloseable" not in out
+
+
+def test_hex_ghost_atype():
+    out = apply_technique(
+        SAMPLE,
+        "hex_ghost",
+        WafOptions(encode_targets=["@type"], encode_values=False),
+    )
+    # @ → \x4_ ；零半字节用 _
+    assert r"\x4_" in out
+    assert "@type" not in out
+    assert "JdbcRowSetImpl" in out
+
+
+def test_hex_ghost_filler_j():
+    out = apply_technique(
+        '{"@type":"x"}',
+        "hex_ghost",
+        WafOptions(hex_ghost_filler="J", encode_values=False),
+    )
+    assert r"\x4J" in out
+
+
+def test_unicode_digit_fullwidth():
+    out = apply_technique(
+        '{"@type":"x"}',
+        "unicode_digit",
+        WafOptions(unicode_digit_script="fullwidth", encode_values=False),
+    )
+    # @ = U+0040 → \u００４０
+    assert r"\u００４０" in out
+    assert "@type" not in out
+
+
+def test_unicode_digit_thai():
+    out = apply_technique(
+        '{"@type":"x"}',
+        "unicode_digit",
+        WafOptions(unicode_digit_script="thai", encode_values=False),
+    )
+    # Thai digits for 0040
+    assert r"\u๐๐๔๐" in out
+
+
+def test_ghost_bits_low_byte():
+    out = apply_technique(
+        '{"@type":"x"}',
+        "ghost_bits",
+        WafOptions(ghost_k=1, encode_values=False),
+    )
+    # @ → U+0140 (ŀ); t → U+0174 (Ŵ)
+    assert "ŀ" in out
+    assert "@type" not in out
+    assert (ord(out[out.index("ŀ")]) & 0xFF) == ord("@")
 
 
 def test_multi_comma():
@@ -116,7 +173,7 @@ def test_poc_1280_applies_waf_to_steps():
 
     r = generate_poc_1280(
         Poc1280GenerateOptions(
-            gadget="jackson_cache",
+            gadget="io_write",
             waf_techniques=["multi_comma"],
             waf_options=WafOptions(comma_count=3),
         )

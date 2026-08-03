@@ -60,7 +60,10 @@ export function WafControls({ value, onChange }: Props) {
   const showTypeKey = current.techniques.some((id) =>
     ["key_underscore", "key_hyphen", "key_mixed"].includes(id),
   );
-  const showOptions = showComma || showPad || showTypeKey;
+  const showGhost = current.techniques.some((id) =>
+    ["hex_ghost", "unicode_digit", "ghost_bits"].includes(id),
+  );
+  const showOptions = showComma || showPad || showTypeKey || showGhost;
 
   return (
     <div className="space-y-3 rounded-lg border p-3">
@@ -161,6 +164,48 @@ export function WafControls({ value, onChange }: Props) {
               >
                 key 变换含 @type
               </Button>
+            </div>
+          ) : null}
+          {showGhost && current.techniques.includes("hex_ghost") ? (
+            <div className="space-y-1">
+              <Label htmlFor="waf-hex-ghost-filler">hex_ghost 填充符</Label>
+              <Input
+                id="waf-hex-ghost-filler"
+                maxLength={1}
+                value={current.options.hex_ghost_filler ?? "_"}
+                onChange={(e) =>
+                  patchOptions({
+                    hex_ghost_filler: (e.target.value || "_").slice(0, 1),
+                  })
+                }
+              />
+            </div>
+          ) : null}
+          {showGhost && current.techniques.includes("unicode_digit") ? (
+            <div className="space-y-1">
+              <Label htmlFor="waf-unicode-digit">unicode_digit 字形</Label>
+              <Input
+                id="waf-unicode-digit"
+                placeholder="fullwidth|thai|gurmukhi"
+                value={current.options.unicode_digit_script ?? "fullwidth"}
+                onChange={(e) =>
+                  patchOptions({
+                    unicode_digit_script: e.target.value || "fullwidth",
+                  })
+                }
+              />
+            </div>
+          ) : null}
+          {showGhost && current.techniques.includes("ghost_bits") ? (
+            <div className="space-y-1">
+              <Label htmlFor="waf-ghost-k">ghost_bits 高字节 k</Label>
+              <Input
+                id="waf-ghost-k"
+                value={String(current.options.ghost_k ?? 1)}
+                onChange={(e) =>
+                  patchOptions({ ghost_k: Number(e.target.value) || 1 })
+                }
+              />
             </div>
           ) : null}
         </div>
