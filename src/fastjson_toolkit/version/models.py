@@ -28,6 +28,13 @@ class VersionResult(BaseModel):
     reported_version_note: Optional[str] = None
     is_1_2_83_hint: Optional[bool] = None
     version_range: Optional[str] = None
+    version_detail: Optional[str] = Field(
+        None,
+        description=(
+            "比 version_range 更细的区间，如 ≈1.2.24 / 1.2.25-1.2.47 / "
+            "1.2.48-1.2.68 / 1.2.70-1.2.80（70 与 73 无法再分）"
+        ),
+    )
     confidence: float = 0.0
     methods_used: list[str] = Field(default_factory=list)
     evidence: list[VersionEvidence] = Field(default_factory=list)

@@ -1,6 +1,8 @@
 """Payloads for Fastjson version fingerprinting.
 
-Reference: https://mp.weixin.qq.com/s/jbkN86qq9JxkGNOhwv9nxA
+References:
+- https://mp.weixin.qq.com/s/jbkN86qq9JxkGNOhwv9nxA （浅蓝 DNS / 精确回显）
+- 盲判断：无报错回显时用 Exception / AutoCloseable / Class+Jdbc / Jdbc 布尔二分
 
 Note checklist implemented here:
 1. AutoType: Class vs Random.String
@@ -9,6 +11,7 @@ Note checklist implemented here:
 4. 1.2.83: Test.TestException 不报错
 5. DNSLog: <=1.2.47 / <=1.2.68 / 双 DNS 分 <=1.2.80 vs 1.2.83
 6. 不出网：Exception / AutoCloseable / Class+Jdbc / Jdbc 报错二分
+   （生产常仅 500 / 裸 error；无法再分 1.2.70-72 与 1.2.73-80）
 """
 
 from __future__ import annotations
@@ -37,11 +40,18 @@ def validate_dns_host(host: str) -> str:
     return host
 
 
-# --- 0. 负向对照：目标是否会回显解析错误 ---
+# --- 0. 对照：正常 JSON vs 残缺 JSON（建立「报错」指纹）---
+BASELINE_OK = VersionProbe(
+    id="baseline_ok",
+    category="control",
+    description="合法 JSON；用于对比生产环境 500 / 裸 error 侧信道",
+    payload='{"x":1}',
+)
+
 NEGATIVE_CONTROL = VersionProbe(
     id="negative_control",
     category="control",
-    description="残缺 JSON；若也不报错，则后续「不报错」信号不可信",
+    description="残缺 JSON；与 baseline 对比，建立报错指纹；若无差异则 offline「不报错」不可信",
     payload='{"@type":',
 )
 
@@ -64,7 +74,10 @@ AUTOTYPE_RANDOM = VersionProbe(
 SAFEMODE_STRING = VersionProbe(
     id="safemode_string",
     category="safemode",
-    description="java.lang.String + 多余引号畸形；SafeMode 开启时报错，关闭时通常不报错",
+    description=(
+        "java.lang.String + 多余引号畸形；SafeMode 开启时报错。"
+        "仅适用于有报错回显；报错≠必然 SafeMode（须交叉校验）"
+    ),
     payload='{"zero":{"@type":"java.lang.String"""}}}',
 )
 
@@ -84,7 +97,9 @@ PROBE_1_2_83 = VersionProbe(
     payload='{"xxx":{"@type":"Test.TestException"}}',
 )
 
-# --- 6. 不出网二分探测 ---
+# --- 6. 不出网二分探测（可插入业务 JSON 的多余键；双 @type 勿经标准 JSON 库重序列化）---
+# 利用区间对照：<1.2.24 无限制；24-47 Class；48-68 AutoCloseable；
+# 70-72 无链；73-80 Exception；83 无漏洞。本表无法区分 70 与 73。
 OFFLINE_EXCEPTION = VersionProbe(
     id="offline_exception",
     category="offline",
@@ -174,8 +189,30 @@ def build_dns_version_probes(hosts: dict[str, str]) -> list[VersionProbe]:
     ]
 
 
+def inject_probe_into_object(base_object_json: str, probe_object_json: str) -> str:
+    """Merge probe object keys into a base JSON object as raw text.
+
+    Fastjson tolerates unrelated keys; dual ``@type`` payloads are intentionally
+    invalid for stdlib ``json`` and must stay literal.
+    """
+    base = base_object_json.strip()
+    probe = probe_object_json.strip()
+    if not (base.startswith("{") and base.endswith("}")):
+        raise ValueError("base_object_json 须为 JSON 对象")
+    if not (probe.startswith("{") and probe.endswith("}")):
+        raise ValueError("probe_object_json 须为 JSON 对象")
+    base_inner = base[1:-1].strip()
+    probe_inner = probe[1:-1].strip()
+    if not probe_inner:
+        return base
+    if not base_inner:
+        return probe
+    return "{" + base_inner + "," + probe_inner + "}"
+
+
 def offline_probes() -> list[VersionProbe]:
     return [
+        BASELINE_OK,
         NEGATIVE_CONTROL,
         AUTOTYPE_CLASS,
         AUTOTYPE_RANDOM,

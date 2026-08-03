@@ -11,6 +11,7 @@ order: 4
 相关阅读：
 
 - [版本探测思路](https://mp.weixin.qq.com/s/jbkN86qq9JxkGNOhwv9nxA)
+- [盲判断版本区间（无报错回显）](https://www.ctfiot.com/132107.html)
 - [期望类判断](https://mp.weixin.qq.com/s/7c_zi5Pv4a69IV0zzJo5Ww)
 - [≤1.2.68 利用技巧](/docs/fastjson-1.2.68)
 - [≤1.2.80 利用技巧](/docs/fastjson-1.2.80)
@@ -215,21 +216,54 @@ Fastjson 支持部分“宽松”语法与特性，可构造探针观察解析�
 - **≤ 1.2.80**：通常只收到**第一个** DNS 请求  
 - **1.2.83**：可能收到**两个** DNS 请求  
 
-### 2.5 不出网探测（按 500 / 正常响应）
+### 2.5 不出网探测（按 500 / 裸 error / 与正常响应差异）
 
-#### 不报错：1.2.83 / 1.2.24；报错：1.2.25–1.2.80
+生产环境常关闭堆栈回显，只返回 **HTTP 500** 或简短 `error` / `{"ok":false}`。此时 DNSLog 不可用或不稳定时，可用 **布尔报错表** 收敛利用区间（本工具 `version` 步骤的 offline 探针）。
+
+#### 可利用版本对照
+
+| 版本区间 | 典型利用面 |
+|----------|------------|
+| &lt;1.2.24 | 几乎无限制 |
+| 1.2.24–1.2.47 | `java.lang.Class` 缓存绕过 |
+| 1.2.48–1.2.68 | `java.lang.AutoCloseable` 期望类绕过 |
+| 1.2.70–1.2.72 | 常见无链 |
+| 1.2.73–1.2.80 | `java.lang.Exception` 绕过 |
+| 1.2.83 | 视为无上述漏洞面 |
+
+> **局限**：下列布尔探针**无法区分 1.2.70 与 1.2.73**；落在 `1.2.70-1.2.80` 时需结合回显精确版本，或直接试 1.2.80 链。
+
+#### 用法
+
+Fastjson 允许无关键。把探针对象的键**插入**业务 JSON（双 `@type` 为故意畸形，勿经标准 JSON 库重序列化「修好」）：
+
+```json
+{"page":{"pageNumber":1,"pageSize":1}}
+```
+
+示意（键合并；靶场也可直接 POST 探针本体）：
+
+```json
+{"page":{"pageNumber":1,"pageSize":1},"zero":{"@type":"java.lang.Exception","@type":"org.XxException"}}
+```
+
+本工具先发合法 `{"x":1}` 与残缺 `{"@type":` 建立「报错指纹」，再对下列探针看是否命中同一侧信道。
+
+#### 探针与布尔表
+
+##### 不报错：1.2.83 / 1.2.24；报错：1.2.25–1.2.80
 
 ```json
 {"zero":{"@type":"java.lang.Exception","@type":"org.XxException"}}
 ```
 
-#### 不报错：1.2.24–1.2.68；报错：1.2.70–1.2.83
+##### 不报错：1.2.24–1.2.68；报错：1.2.70–1.2.83
 
 ```json
 {"zero":{"@type":"java.lang.AutoCloseable","@type":"java.io.ByteArrayOutputStream"}}
 ```
 
-#### 不报错：1.2.24–1.2.47；报错：1.2.48–1.2.83
+##### 不报错：1.2.24–1.2.47；报错：1.2.48–1.2.83
 
 ```json
 {
@@ -243,13 +277,24 @@ Fastjson 支持部分“宽松”语法与特性，可构造探针观察解析�
 }
 ```
 
-#### 不报错：1.2.24；报错：1.2.25–1.2.83
+##### 不报错：1.2.24；报错：1.2.25–1.2.83
 
 ```json
 {"zero": {"@type": "com.sun.rowset.JdbcRowSetImpl"}}
 ```
 
+| Exception | AutoCloseable | Class+Jdbc | Jdbc | 细分 `version_detail` | PoC 档 `version_range` |
+|-----------|---------------|------------|------|----------------------|------------------------|
+| 不报错 | 不报错 | 不报错 | 不报错 | ≈1.2.24 | &lt;=1.2.47 |
+| 报错 | 不报错 | 不报错 | 报错 | 1.2.25–1.2.47 | &lt;=1.2.47 |
+| 报错 | 不报错 | 报错 | 报错 | 1.2.48–1.2.68 | &lt;=1.2.68 |
+| 报错 | 报错 | 报错 | 报错 | 1.2.70–1.2.80 | &lt;=1.2.80 |
+| 不报错 | 报错/不报错 | 报错 | 报错 | 1.2.83 | 1.2.83 |
+
+API / 探测页会同时给出 `version_range`（路由 PoC）与 `version_detail`（细分区间）。
+
 ---
+
 
 ## 3. 依赖探测
 
@@ -275,6 +320,16 @@ Fastjson 支持部分“宽松”语法与特性，可构造探针观察解析�
 
 > 这是故意畸形的 JSON 探针，需按原始文本投递，不要先被本地格式化“修掉”。
 
+**AutoType 关闭注意**：在 ≤1.2.68 等场景，Character 畸形常直接报 `not close json text`，到不了 cast 侧信道。本工具 `deps_probe(method=character)` 会先校准，失败时自动改用 **Class MiscCodec** 探针：
+
+```json
+{"@type":"java.lang.Class","val":"org.apache.commons.io.ByteOrderMark"}
+```
+
+- 类存在 → 响应回显 `"org.apache.commons.io.ByteOrderMark"`
+- 类不存在 → `null`
+
+也可显式指定 `method=class`。
 ### 3.2 常见依赖类
 
 | 类名 | 说明 |

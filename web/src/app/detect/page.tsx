@@ -819,7 +819,12 @@ export default function DetectPage() {
                   </Badge>
                 ) : null}
                 {versionResult?.version_range ? (
-                  <Badge variant="outline">{versionResult.version_range}</Badge>
+                  <Badge variant="outline">
+                    {versionResult.version_detail &&
+                    versionResult.version_detail !== versionResult.version_range
+                      ? `${versionResult.version_range} · ${versionResult.version_detail}`
+                      : versionResult.version_range}
+                  </Badge>
                 ) : null}
                 {expectResult ? (
                   <Badge variant="outline">
@@ -993,6 +998,13 @@ export default function DetectPage() {
                       >
                         {versionResult.version_range ?? "未知区间"}
                       </Badge>
+                      {versionResult.version_detail &&
+                      versionResult.version_detail !==
+                        versionResult.version_range ? (
+                        <Badge variant="outline">
+                          细分 {versionResult.version_detail}
+                        </Badge>
+                      ) : null}
                       <Badge variant="outline">
                         置信度 {(versionResult.confidence * 100).toFixed(0)}%
                       </Badge>

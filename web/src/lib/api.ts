@@ -202,6 +202,7 @@ export type VersionResult = {
   reported_version_note: string | null;
   is_1_2_83_hint: boolean | null;
   version_range: string | null;
+  version_detail: string | null;
   confidence: number;
   methods_used: string[];
   evidence: VersionEvidence[];

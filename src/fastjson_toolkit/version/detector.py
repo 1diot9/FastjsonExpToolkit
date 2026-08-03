@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Mapping, Optional
 from urllib.parse import urlparse
 
@@ -13,6 +14,7 @@ from fastjson_toolkit.version.probes import (
     AUTOCLOSEABLE_EXACT,
     AUTOTYPE_CLASS,
     AUTOTYPE_RANDOM,
+    BASELINE_OK,
     NEGATIVE_CONTROL,
     OFFLINE_AUTOCLOSEABLE,
     OFFLINE_CLASS_JDBC,
@@ -37,6 +39,23 @@ _ERROR_MARKERS = (
     "Illegal syntax",
 )
 
+# Explicit SafeMode refusal (stronger than generic parse errors).
+_SAFEMODE_MARKERS = (
+    "safeMode not support autoType",
+    "safemode not support autotype",
+)
+
+_OPAQUE_OK_FALSE_RE = re.compile(r'^\s*\{\s*"ok"\s*:\s*false\s*\}\s*$', re.I)
+_OPAQUE_ERROR_OBJ_RE = re.compile(r'^\s*\{\s*"error"\s*:', re.I)
+
+
+@dataclass(frozen=True)
+class ResponseSig:
+    """Fingerprint for opaque 500 / bare-error handlers."""
+
+    status_code: int
+    body: str
+
 
 def _excerpt(text: str, limit: int = 400) -> str:
     text = text.replace("\r", "\\r").replace("\n", "\\n")
@@ -51,15 +70,39 @@ def _resolve_url(target: str) -> str:
     return target
 
 
-def response_errored(resp: HttpResponse) -> bool:
-    """Judge whether the target treated the payload as a parse/runtime error."""
+def response_sig(resp: HttpResponse, *, body_limit: int = 300) -> ResponseSig:
+    return ResponseSig(resp.status_code, (resp.text or "").strip()[:body_limit])
+
+
+def response_errored(
+    resp: HttpResponse,
+    *,
+    error_sig: Optional[ResponseSig] = None,
+) -> bool:
+    """Judge whether the target treated the payload as a parse/runtime error.
+
+    Covers stack-trace echo, HTTP >=400, and production opaque handlers
+    (bare ``error`` / ``{"ok":false}`` / same fingerprint as negative control).
+    """
     if resp.status_code >= 400:
         return True
     text = resp.text or ""
     lower = text.lower()
     if any(m.lower() in lower for m in _ERROR_MARKERS):
         return True
+    stripped = text.strip()
+    stripped_l = stripped.lower()
+    if stripped_l in {"error", '"error"', "'error'"}:
+        return True
+    if _OPAQUE_OK_FALSE_RE.match(stripped):
+        return True
+    if _OPAQUE_ERROR_OBJ_RE.match(stripped) and (
+        len(stripped) < 200 or "exception" in lower or "syntax" in lower
+    ):
+        return True
     if '"error"' in lower and ("exception" in lower or "syntax" in lower):
+        return True
+    if error_sig is not None and response_sig(resp) == error_sig:
         return True
     return False
 
@@ -82,6 +125,7 @@ class FastjsonVersionDetector:
         self.ceye_wait = ceye_wait
         self.content_type = content_type
         self._ceye: Optional[CeyeClient] = CeyeClient(ceye) if ceye else None
+        self._error_sig: Optional[ResponseSig] = None
 
     def close(self) -> None:
         self.client.close()
@@ -96,6 +140,7 @@ class FastjsonVersionDetector:
         dns_hosts: dict[str, str] = {}
         dns_records: list[dict] = []
         dns_hits: dict[str, bool] = {}
+        self._error_sig = None
 
         dns_skip_reason: Optional[str] = None
         if include_dns and self._ceye is not None:
@@ -115,13 +160,16 @@ class FastjsonVersionDetector:
             dns_skip_reason = "已请求 DNS 探针，但未配置 CEYE Token 且未提供 dnslog"
 
         methods.append("control")
-        error_surface = self._probe_negative_control(url, evidence)
+        error_surface = self._probe_error_surface(url, evidence)
 
         methods.append("autotype")
         autotype_enabled = self._probe_autotype(url, evidence)
 
         methods.append("safemode")
-        safemode_enabled = self._probe_safemode(url, evidence)
+        # 笔记：String""" 探针仅在有报错回显时有意义；报错≠必然 SafeMode
+        safemode_enabled = self._probe_safemode(
+            url, evidence, error_surface=error_surface
+        )
 
         methods.append("autoclosable_exact")
         reported_version, reported_note = self._probe_exact(url, evidence)
@@ -132,13 +180,23 @@ class FastjsonVersionDetector:
         methods.append("offline")
         offline_flags = self._run_offline(url, evidence)
 
-        version_range, confidence = self._infer_band(
+        version_range, version_detail, confidence = self._infer_band(
             reported_version=reported_version,
             is_83=is_83,
             offline=offline_flags,
             error_surface=error_surface,
             autotype_enabled=autotype_enabled,
             dns_hits=None,
+        )
+
+        safemode_enabled = self._crosscheck_safemode(
+            safemode_enabled,
+            offline_flags=offline_flags,
+            reported_version=reported_version,
+            autotype_enabled=autotype_enabled,
+            error_surface=error_surface,
+            version_range=version_range,
+            evidence=evidence,
         )
 
         if dns_skip_reason:
@@ -175,7 +233,7 @@ class FastjsonVersionDetector:
                         for r in records
                     ]
                     dns_hits = self._match_dns_hits(dns_hosts, records)
-                    version_range, confidence = self._infer_band(
+                    version_range, version_detail, confidence = self._infer_band(
                         reported_version=reported_version,
                         is_83=is_83,
                         offline=offline_flags,
@@ -240,6 +298,7 @@ class FastjsonVersionDetector:
             reported_note=reported_note,
             is_83=is_83,
             version_range=version_range,
+            version_detail=version_detail,
             confidence=confidence,
             dns_hits=dns_hits,
             error_surface=error_surface,
@@ -254,6 +313,7 @@ class FastjsonVersionDetector:
             reported_version_note=reported_note,
             is_1_2_83_hint=is_83,
             version_range=version_range,
+            version_detail=version_detail,
             confidence=round(confidence, 3),
             methods_used=methods,
             evidence=evidence,
@@ -267,11 +327,19 @@ class FastjsonVersionDetector:
                 "dns_hosts": dns_hosts,
                 "offline_flags": offline_flags,
                 "error_surface": error_surface,
+                "error_sig": (
+                    {"status_code": self._error_sig.status_code, "body": self._error_sig.body}
+                    if self._error_sig
+                    else None
+                ),
                 "dns_skip_reason": dns_skip_reason,
                 "ceye_domain": self.ceye_config.domain if self.ceye_config else None,
                 "probe_ids": [p.id for p in all_version_probes(dns_hosts or None)],
             },
         )
+
+    def _errored(self, resp: HttpResponse) -> bool:
+        return response_errored(resp, error_sig=self._error_sig)
 
     def _send(self, url: str, probe: VersionProbe) -> HttpResponse:
         return self.client.post_raw(url, probe.payload, self.content_type)
@@ -288,7 +356,7 @@ class FastjsonVersionDetector:
                 matched=[f"request_error:{type(exc).__name__}"],
                 interpretation=str(exc),
             )
-        errored = response_errored(resp)
+        errored = self._errored(resp)
         return VersionEvidence(
             probe_id=probe.id,
             category=probe.category,
@@ -302,8 +370,49 @@ class FastjsonVersionDetector:
             interpretation="解析/运行异常" if errored else "未见异常",
         )
 
-    def _probe_negative_control(self, url: str, evidence: list[VersionEvidence]) -> Optional[bool]:
-        """Return True if the target surfaces parse errors (required for offline OK signals)."""
+    def _probe_error_surface(self, url: str, evidence: list[VersionEvidence]) -> Optional[bool]:
+        """Establish opaque-error fingerprint via baseline vs negative control."""
+        baseline_sig: Optional[ResponseSig] = None
+        try:
+            base_resp = self._send(url, BASELINE_OK)
+        except Exception as exc:  # noqa: BLE001
+            evidence.append(
+                VersionEvidence(
+                    probe_id=BASELINE_OK.id,
+                    category="control",
+                    description=BASELINE_OK.description,
+                    payload=BASELINE_OK.payload,
+                    matched=[f"request_error:{type(exc).__name__}"],
+                    interpretation=str(exc),
+                )
+            )
+            base_resp = None
+        else:
+            baseline_sig = response_sig(base_resp)
+            base_classic_err = response_errored(base_resp)
+            evidence.append(
+                VersionEvidence(
+                    probe_id=BASELINE_OK.id,
+                    category="control",
+                    description=BASELINE_OK.description,
+                    payload=BASELINE_OK.payload,
+                    status_code=base_resp.status_code,
+                    elapsed_ms=round(base_resp.elapsed_ms, 2),
+                    errored=base_classic_err,
+                    matched=["baseline_error"] if base_classic_err else ["baseline_ok"],
+                    response_excerpt=_excerpt(base_resp.text),
+                    interpretation=(
+                        "合法 JSON 也被判错，后续侧信道可能不可靠"
+                        if base_classic_err
+                        else "合法 JSON 正常"
+                    ),
+                )
+            )
+            if base_classic_err:
+                # Everything looks like an error — do not use fingerprint matching.
+                self._error_sig = None
+                return None
+
         try:
             resp = self._send(url, NEGATIVE_CONTROL)
         except Exception as exc:  # noqa: BLE001
@@ -318,7 +427,13 @@ class FastjsonVersionDetector:
                 )
             )
             return None
-        errored = response_errored(resp)
+
+        neg_sig = response_sig(resp)
+        classic_err = response_errored(resp)
+        differs = baseline_sig is not None and neg_sig != baseline_sig
+        errored = classic_err or differs
+        if errored:
+            self._error_sig = neg_sig
         evidence.append(
             VersionEvidence(
                 probe_id=NEGATIVE_CONTROL.id,
@@ -331,9 +446,10 @@ class FastjsonVersionDetector:
                 matched=["error_surface"] if errored else ["silent_ok"],
                 response_excerpt=_excerpt(resp.text),
                 interpretation=(
-                    "目标会回显/返回解析错误，offline「不报错」可信"
+                    "目标对解析错误有可区分侧信道（500 / 裸 error / 与 baseline 不同），"
+                    "offline 布尔二分可信"
                     if errored
-                    else "目标不回显错误，offline「不报错」不可作为版本信号"
+                    else "残缺 JSON 与合法 JSON 响应无差异，offline「不报错」不可作为版本信号"
                 ),
             )
         )
@@ -357,12 +473,12 @@ class FastjsonVersionDetector:
 
         class_err_msg = "autoType is not support. java.lang.Class" in (class_resp.text or "")
         rand_err_msg = "autoType is not support. Random.String" in (rand_resp.text or "")
-        class_errored = response_errored(class_resp)
-        rand_errored = response_errored(rand_resp)
+        class_errored = self._errored(class_resp)
+        rand_errored = self._errored(rand_resp)
 
         enabled: Optional[bool] = None
         interpretation = "无法判定 AutoType 状态"
-        # 开启：payload1 报错，payload2 不报错（无回显时仅看状态码）
+        # 开启：payload1 报错，payload2 不报错（无回显时仅看状态码 / 指纹）
         if class_errored and not rand_errored:
             enabled = True
             interpretation = (
@@ -409,8 +525,33 @@ class FastjsonVersionDetector:
         )
         return enabled
 
-    def _probe_safemode(self, url: str, evidence: list[VersionEvidence]) -> Optional[bool]:
-        """SafeMode on → malformed String payload errors; off → usually ok."""
+    def _probe_safemode(
+        self,
+        url: str,
+        evidence: list[VersionEvidence],
+        *,
+        error_surface: Optional[bool],
+    ) -> Optional[bool]:
+        """SafeMode String\"\"\" probe — only meaningful with error echo.
+
+        Note checklist: SafeMode ON → this payload errors. The converse is false:
+        AutoType-off / pure syntax errors also trip it, so callers must cross-check.
+        """
+        if error_surface is False:
+            evidence.append(
+                VersionEvidence(
+                    probe_id=SAFEMODE_STRING.id,
+                    category="safemode",
+                    description=SAFEMODE_STRING.description,
+                    payload=SAFEMODE_STRING.payload,
+                    matched=["skipped_no_error_surface"],
+                    interpretation=(
+                        "目标不回显解析错误，笔记中的 SafeMode String 探针不适用 → 未知"
+                    ),
+                )
+            )
+            return None
+
         try:
             resp = self._send(url, SAFEMODE_STRING)
         except Exception as exc:  # noqa: BLE001
@@ -426,13 +567,28 @@ class FastjsonVersionDetector:
             )
             return None
 
-        errored = response_errored(resp)
-        enabled = bool(errored)
-        interpretation = (
-            "SafeMode 疑似开启（String 畸形 payload 报错）"
-            if enabled
-            else "SafeMode 疑似关闭（String 畸形 payload 不报错）"
-        )
+        text = resp.text or ""
+        lower = text.lower()
+        safemode_msg = any(m.lower() in lower for m in _SAFEMODE_MARKERS)
+        errored = self._errored(resp)
+
+        if safemode_msg:
+            enabled: Optional[bool] = True
+            matched = ["safemode_marker"]
+            interpretation = "响应含 safeMode not support autoType → SafeMode 疑似开启"
+        elif not errored:
+            enabled = False
+            matched = ["ok"]
+            interpretation = "SafeMode 疑似关闭（String 畸形 payload 不报错）"
+        else:
+            # Tentative; _crosscheck_safemode decides. Syntax-only is often a FP.
+            enabled = True
+            matched = ["errored_pending_crosscheck"]
+            interpretation = (
+                "String 畸形 payload 报错（待交叉校验；"
+                "常见于纯语法错误 / AutoType 关闭，≠ 必然 SafeMode）"
+            )
+
         evidence.append(
             VersionEvidence(
                 probe_id=SAFEMODE_STRING.id,
@@ -442,12 +598,114 @@ class FastjsonVersionDetector:
                 status_code=resp.status_code,
                 elapsed_ms=round(resp.elapsed_ms, 2),
                 errored=errored,
-                matched=["errored"] if errored else ["ok"],
-                response_excerpt=_excerpt(resp.text),
+                matched=matched,
+                response_excerpt=_excerpt(text),
                 interpretation=interpretation,
             )
         )
         return enabled
+
+    def _crosscheck_safemode(
+        self,
+        safemode_enabled: Optional[bool],
+        *,
+        offline_flags: dict[str, Optional[bool]],
+        reported_version: Optional[str],
+        autotype_enabled: Optional[bool],
+        error_surface: Optional[bool],
+        version_range: Optional[str],
+        evidence: list[VersionEvidence],
+    ) -> Optional[bool]:
+        """Finalize SafeMode: require error echo; downgrade when @type still works."""
+        if error_surface is False:
+            return None
+        if safemode_enabled is not True:
+            return safemode_enabled
+
+        # SafeMode 自 1.2.68 引入；已收敛到更低版本则不可能开启
+        if version_range == "<=1.2.47":
+            evidence.append(
+                VersionEvidence(
+                    probe_id="safemode_crosscheck",
+                    category="safemode",
+                    description="SafeMode 与版本区间交叉校验",
+                    matched=["version_range<=1.2.47"],
+                    interpretation=(
+                        "版本区间 ≤1.2.47（SafeMode 尚未引入）→ 判定为非 SafeMode"
+                    ),
+                )
+            )
+            return False
+
+        reasons: list[str] = []
+        if offline_flags.get("autoclosable_ok") is True:
+            reasons.append("AutoCloseable 双 @type 不报错")
+        if reported_version:
+            reasons.append(f"AutoCloseable 回显版本 {reported_version}")
+        # AutoType 关闭形态：java.lang.Class @type 仍可用 → 绝非全面禁用 @type 的 SafeMode
+        if autotype_enabled is False:
+            reasons.append("AutoType 关闭形态（java.lang.Class @type 仍可用）")
+
+        probe_ev = next(
+            (e for e in reversed(evidence) if e.probe_id == SAFEMODE_STRING.id),
+            None,
+        )
+        has_safemode_marker = bool(
+            probe_ev and "safemode_marker" in (probe_ev.matched or [])
+        )
+        excerpt = (probe_ev.response_excerpt or "") if probe_ev else ""
+        syntax_only = (
+            not has_safemode_marker
+            and "not close json text" in excerpt.lower()
+        )
+
+        if reasons:
+            interpretation = (
+                "SafeMode 探针假阳性："
+                + "；".join(reasons)
+                + " → 判定为非 SafeMode"
+            )
+            evidence.append(
+                VersionEvidence(
+                    probe_id="safemode_crosscheck",
+                    category="safemode",
+                    description="SafeMode 交叉校验",
+                    matched=reasons,
+                    interpretation=interpretation,
+                )
+            )
+            return False
+
+        if syntax_only:
+            evidence.append(
+                VersionEvidence(
+                    probe_id="safemode_crosscheck",
+                    category="safemode",
+                    description="SafeMode 交叉校验",
+                    matched=["syntax_only_not_close_json"],
+                    interpretation=(
+                        "仅有 not close json text 语法错误、无 safeMode 特征文案、"
+                        "且无 @type 全面失效证据 → SafeMode 未知"
+                    ),
+                )
+            )
+            return None
+
+        if has_safemode_marker:
+            return True
+
+        evidence.append(
+            VersionEvidence(
+                probe_id="safemode_crosscheck",
+                category="safemode",
+                description="SafeMode 交叉校验",
+                matched=["low_confidence_errored"],
+                interpretation=(
+                    "String 畸形报错且无反证，仍仅作低置信 SafeMode 疑似开启"
+                ),
+            )
+        )
+        return True
 
     def _probe_exact(
         self, url: str, evidence: list[VersionEvidence]
@@ -485,7 +743,7 @@ class FastjsonVersionDetector:
                 payload=AUTOCLOSEABLE_EXACT.payload,
                 status_code=resp.status_code,
                 elapsed_ms=round(resp.elapsed_ms, 2),
-                errored=response_errored(resp),
+                errored=self._errored(resp),
                 matched=[f"version:{version}"] if version else [],
                 response_excerpt=_excerpt(text),
                 interpretation=interpretation,
@@ -509,7 +767,7 @@ class FastjsonVersionDetector:
             )
             return None
 
-        errored = response_errored(resp)
+        errored = self._errored(resp)
         is_83 = False if errored else True
         evidence.append(
             VersionEvidence(
@@ -551,7 +809,7 @@ class FastjsonVersionDetector:
                     )
                 )
                 continue
-            errored = response_errored(resp)
+            errored = self._errored(resp)
             flags[key] = not errored
             evidence.append(
                 VersionEvidence(
@@ -569,7 +827,7 @@ class FastjsonVersionDetector:
             )
         return flags
 
-    # Canonical bands the toolkit aims to distinguish.
+    # Canonical bands the toolkit aims to distinguish for PoC routing.
     BANDS = ("<=1.2.47", "<=1.2.68", "<=1.2.80", "1.2.83")
 
     @staticmethod
@@ -619,29 +877,37 @@ class FastjsonVersionDetector:
         return None
 
     @classmethod
-    def _band_from_echo(cls, reported_version: Optional[str]) -> Optional[str]:
+    def _band_from_echo(
+        cls, reported_version: Optional[str]
+    ) -> tuple[Optional[str], Optional[str]]:
         """Note §2: AutoCloseable fastjson-version；1.2.76+ 常写死 1.2.76 → <=1.2.80."""
         if not reported_version:
-            return None
+            return None, None
         if reported_version == "1.2.83":
-            return "1.2.83"
+            return "1.2.83", "1.2.83"
         if reported_version == "1.2.76":
-            return "<=1.2.80"
+            return "<=1.2.80", "1.2.76-1.2.80"
         try:
             parts = [int(x) for x in reported_version.split(".")]
         except ValueError:
-            return cls.normalize_band(reported_version)
+            band = cls.normalize_band(reported_version)
+            return band, reported_version
         if len(parts) >= 3 and parts[0] == 1 and parts[1] == 2:
             patch = parts[2]
+            if patch <= 24:
+                return "<=1.2.47", "≈1.2.24"
             if patch <= 47:
-                return "<=1.2.47"
+                return "<=1.2.47", "1.2.25-1.2.47"
             if patch <= 68:
-                return "<=1.2.68"
+                return "<=1.2.68", "1.2.48-1.2.68"
+            if patch <= 72:
+                return "<=1.2.80", "1.2.70-1.2.72"
             if patch <= 80:
-                return "<=1.2.80"
+                return "<=1.2.80", "1.2.73-1.2.80"
             if patch >= 83:
-                return "1.2.83"
-        return cls.normalize_band(reported_version)
+                return "1.2.83", "1.2.83"
+        band = cls.normalize_band(reported_version)
+        return band, reported_version
 
     @classmethod
     def _band_from_offline(
@@ -649,28 +915,31 @@ class FastjsonVersionDetector:
         offline: dict[str, Optional[bool]],
         *,
         trust: bool,
-    ) -> tuple[Optional[str], float]:
-        """Note §5 error/ok binary table → four bands."""
+    ) -> tuple[Optional[str], Optional[str], float]:
+        """布尔报错表 → PoC band + 细粒度 detail（无法再分 1.2.70 与 1.2.73）。"""
         e = offline.get("exception_ok")
         a = offline.get("autoclosable_ok")
         c = offline.get("class_jdbc_ok")
         j = offline.get("jdbc_ok")
         if None in (e, a, c, j) or not trust:
-            return None, 0.0
+            return None, None, 0.0
         pattern = (e, a, c, j)
+        # (exception_ok, autoclosable_ok, class_jdbc_ok, jdbc_ok) → band, detail, conf
         table = {
-            (True, True, True, True): ("<=1.2.47", 0.8),  # ~1.2.24
-            (False, True, True, True): ("<=1.2.47", 0.85),
-            (False, True, True, False): ("<=1.2.47", 0.85),
-            # ac=ok & cj=err → note §5 「<=1.2.68」；1.2.80 在 raw parse 下也可能同型
-            (False, True, False, False): ("<=1.2.68", 0.85),
-            # ac=err → note §5 「1.2.70-1.2.83」上限收到 <=1.2.80（再靠双 DNS / 回显分 83）
-            (False, False, False, False): ("<=1.2.80", 0.85),
-            (True, False, False, False): ("1.2.83", 0.9),
+            (True, True, True, True): ("<=1.2.47", "≈1.2.24", 0.8),
+            (False, True, True, True): ("<=1.2.47", "1.2.25-1.2.47", 0.75),
+            (False, True, True, False): ("<=1.2.47", "1.2.25-1.2.47", 0.85),
+            (False, True, False, False): ("<=1.2.68", "1.2.48-1.2.68", 0.85),
+            # AutoCloseable 报错：1.2.70-1.2.80（含无链 70-72 与 Exception 绕过 73-80）
+            (False, False, False, False): ("<=1.2.80", "1.2.70-1.2.80", 0.85),
+            (True, False, False, False): ("1.2.83", "1.2.83", 0.9),
             # 实测 1.2.83 上 AutoCloseable 二分常仍不报错
-            (True, True, False, False): ("1.2.83", 0.85),
+            (True, True, False, False): ("1.2.83", "1.2.83", 0.85),
         }
-        return table.get(pattern, (None, 0.0))
+        hit = table.get(pattern)
+        if not hit:
+            return None, None, 0.0
+        return hit
 
     @classmethod
     def _dns_overfired(cls, dns_hits: dict[str, bool]) -> bool:
@@ -722,14 +991,17 @@ class FastjsonVersionDetector:
         error_surface: Optional[bool] = True,
         autotype_enabled: Optional[bool] = None,
         dns_hits: Optional[dict[str, bool]] = None,
-    ) -> tuple[Optional[str], float]:
+    ) -> tuple[Optional[str], Optional[str], float]:
         """Four bands via note §2 echo / §3 83 / §4 DNS / §5 offline.
 
+        Returns (version_range, version_detail, confidence).
         DNSLog 开启时：双 DNS 优先定 1.2.83；其余在 DNS overfire 时回退出网二分与回显。
         """
         trust_offline = error_surface is not False and autotype_enabled is not True
-        echo_band = cls._band_from_echo(reported_version)
-        offline_band, offline_conf = cls._band_from_offline(offline, trust=trust_offline)
+        echo_band, echo_detail = cls._band_from_echo(reported_version)
+        offline_band, offline_detail, offline_conf = cls._band_from_offline(
+            offline, trust=trust_offline
+        )
         dns_band, dns_conf = (None, 0.0)
         if dns_hits is not None:
             dns_band, dns_conf = cls._band_from_dns(
@@ -738,40 +1010,40 @@ class FastjsonVersionDetector:
 
         # 1) AutoCloseable 回显（§2）；1.2.76 用双 DNS 排除真 83
         if echo_band == "1.2.83":
-            return "1.2.83", 0.95
+            return "1.2.83", echo_detail or "1.2.83", 0.95
         if reported_version == "1.2.76" or echo_band == "<=1.2.80":
             if dns_band == "1.2.83" or is_83 is True:
-                return "1.2.83", 0.92
+                return "1.2.83", "1.2.83", 0.92
             if echo_band:
-                return "<=1.2.80", 0.92
+                return "<=1.2.80", echo_detail or "1.2.70-1.2.80", 0.92
         if echo_band in ("<=1.2.47", "<=1.2.68"):
-            return echo_band, 0.95
+            return echo_band, echo_detail, 0.95
 
         # 2) DNS 双请求 → 1.2.83（§4，DNSLog 主路径）
         if dns_band == "1.2.83":
-            return "1.2.83", dns_conf
+            return "1.2.83", "1.2.83", dns_conf
         if is_83 is True and autotype_enabled is not True:
-            return "1.2.83", 0.88
+            return "1.2.83", "1.2.83", 0.88
 
         # 3) 不出网二分（§5）—— DNS overfire 或未开 DNS 时的主路径
         if trust_offline and offline_band:
             if offline_band == "1.2.83":
-                return "1.2.83", offline_conf
-            return offline_band, offline_conf
+                return "1.2.83", offline_detail or "1.2.83", offline_conf
+            return offline_band, offline_detail, offline_conf
 
         # 4) 互斥 DNS 档（仅当未 overfire）
         if dns_band:
-            return dns_band, dns_conf
+            return dns_band, dns_band, dns_conf
 
         # 5) silent / AT-on：offline 不可信时的弱信号
         if not trust_offline and dns_hits is not None and cls._dns_overfired(dns_hits):
             if bool(dns_hits.get("d80a")) and not bool(dns_hits.get("d80b")):
-                return "<=1.2.80", 0.5
+                return "<=1.2.80", "1.2.70-1.2.80", 0.5
         if is_83 is True:
-            return "1.2.83", 0.65
+            return "1.2.83", "1.2.83", 0.65
         if echo_band:
-            return echo_band, 0.7
-        return None, 0.0
+            return echo_band, echo_detail, 0.7
+        return None, None, 0.0
 
     # Back-compat for unit tests that still call old helpers.
     @classmethod
@@ -783,7 +1055,7 @@ class FastjsonVersionDetector:
         error_surface: Optional[bool] = True,
         autotype_enabled: Optional[bool] = None,
     ) -> tuple[Optional[str], float]:
-        return cls._infer_band(
+        band, _detail, conf = cls._infer_band(
             reported_version=reported_version,
             is_83=is_83,
             offline=offline,
@@ -791,6 +1063,7 @@ class FastjsonVersionDetector:
             autotype_enabled=autotype_enabled,
             dns_hits=None,
         )
+        return band, conf
 
     @classmethod
     def _infer_from_dns(
@@ -812,10 +1085,16 @@ class FastjsonVersionDetector:
         error_surface: Optional[bool] = True,
         dns_skip_reason: Optional[str] = None,
         safemode_enabled: Optional[bool] = None,
+        version_detail: Optional[str] = None,
     ) -> tuple[str, list[str]]:
         parts: list[str] = []
         if version_range:
-            parts.append(f"版本区间 {version_range}（置信度 {confidence:.2f}）")
+            if version_detail and version_detail != version_range:
+                parts.append(
+                    f"版本区间 {version_range}（细分为 {version_detail}，置信度 {confidence:.2f}）"
+                )
+            else:
+                parts.append(f"版本区间 {version_range}（置信度 {confidence:.2f}）")
         else:
             parts.append("未能收敛出版本区间")
         if error_surface is False:
@@ -833,7 +1112,7 @@ class FastjsonVersionDetector:
         elif autotype_enabled is False:
             parts.append("AutoType 疑似关闭")
         if safemode_enabled is True:
-            parts.append("SafeMode 疑似开启")
+            parts.append("SafeMode 低置信疑似开启")
         elif safemode_enabled is False:
             parts.append("SafeMode 疑似关闭")
         if dns_skip_reason:
@@ -845,32 +1124,52 @@ class FastjsonVersionDetector:
 
         next_actions: list[str] = []
         if version_range == "1.2.83":
-            next_actions.append("可进入高版本 expectClass / 利用面评估（需授权）")
+            next_actions.append(
+                "poc_catalog(family=cve-2026-16723) / poc_run 评估高版本利用面（需授权）"
+            )
         elif version_range == "<=1.2.80":
-            next_actions.append("区间上限约 1.2.80，可对照该档绕过链做授权评估")
+            next_actions.append(
+                "poc_catalog(family=1.2.80) → poc_run；AutoType 关时用 expect_bypass"
+            )
+            if version_detail == "1.2.70-1.2.80":
+                next_actions.append(
+                    "不出网二分无法区分 1.2.70-72（无链）与 1.2.73-80（Exception 绕过）；"
+                    "有回显时看 AutoCloseable 精确版本，或直接试 1.2.80 链"
+                )
         elif version_range == "<=1.2.68":
-            next_actions.append("区间上限约 1.2.68，可对照该档绕过链做授权评估")
+            next_actions.append(
+                "poc_catalog(family=1.2.68) → deps_probe 确认 commons-io 等 → poc_run"
+            )
         elif version_range == "<=1.2.47":
-            next_actions.append("低版本档（≤1.2.47），可优先评估经典 JNDI / 缓存绕过（需授权）")
+            next_actions.append(
+                "poc_catalog(family=1.2.47) → 评估 JNDI / 缓存绕过（需授权）"
+            )
         else:
             next_actions.append("结合报错回显与 DNS 命中人工复核版本区间")
         if version_range == "<=1.2.68" and error_surface is False:
             next_actions.append(
                 "无回显时 1.2.68 与 1.2.80 的 AutoCloseable 不出网表现可能相同；"
-                "请改用报错回显（§2：1.2.68 vs 写死的 1.2.76）确认是否实为 <=1.2.80"
+                "请改用报错回显确认是否实为 <=1.2.80"
             )
         if safemode_enabled is True:
-            next_actions.append("SafeMode 开启时 @type 被全面禁止，常规 AutoType 链通常无效")
+            next_actions.append(
+                "SafeMode 低置信：若仍能走 AutoCloseable/expectClass 则忽略；"
+                "真 SafeMode 时几乎所有 @type 链失效"
+            )
         if autotype_enabled is True and error_surface is False:
             next_actions.append(
                 "AutoType 开启且无报错回显时，68/80/83 侧信道易混淆；优先找 AT 关闭或有回显的入口"
             )
         if autotype_enabled is False and safemode_enabled is not True:
             next_actions.append(
-                "AutoType 关闭时优先打开 /expect 确认是否存在期望类，再评估绕过面"
+                "AutoType 关闭：先看 detect_pipeline.expect；"
+                "再用 poc_run(expect_bypass=true) / 1.2.68 AutoCloseable 链"
             )
         if dns_skip_reason:
-            next_actions.append("在设置页配置 CEYE，或填写自定义 DNSLog 域名后再开 DNS")
+            next_actions.append(
+                "配置项目 .env 的 CEYE_TOKEN/CEYE_DOMAIN 后重跑 "
+                "detect_pipeline(include_dns_version=true)"
+            )
         elif dns_hits and FastjsonVersionDetector._dns_overfired(dns_hits):
             next_actions.append(
                 "DNS le47 与 80/83 探针同时命中（InetSocketAddress 可单独出网），"
