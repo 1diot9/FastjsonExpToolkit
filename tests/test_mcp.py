@@ -173,6 +173,56 @@ def test_poc_catalog_and_mcp_tools_registered() -> None:
     ]
 
 
+def test_mcp_tool_parameters_have_descriptions() -> None:
+    """每个带参工具的 JSON Schema 字段都应有 description，便于 LLM 选型。"""
+    mcp = create_mcp()
+    tools = mcp._tool_manager._tools  # noqa: SLF001
+    expected = {
+        "detect_pipeline": {
+            "target",
+            "include_dns_detect",
+            "include_dns_version",
+            "timeout",
+            "headers",
+            "proxy",
+            "insecure",
+            "base_body",
+        },
+        "deps_probe": {
+            "target",
+            "method",
+            "classes",
+            "categories",
+            "timeout",
+            "concurrency",
+            "headers",
+            "proxy",
+            "insecure",
+        },
+        "poc_catalog": {"family"},
+        "poc_run": {
+            "family",
+            "send",
+            "target",
+            "expect_bypass",
+            "waf_techniques",
+            "waf_options",
+            "options",
+        },
+        "poc_script": {"family", "gadget"},
+        "docs_get": {"slug"},
+        "docs_list": set(),
+    }
+    for name, props in expected.items():
+        schema = tools[name].parameters
+        assert schema.get("type") == "object"
+        actual = set(schema.get("properties") or {})
+        assert actual == props, f"{name}: {actual} != {props}"
+        for prop, meta in (schema.get("properties") or {}).items():
+            desc = meta.get("description")
+            assert isinstance(desc, str) and desc.strip(), f"{name}.{prop} 缺少 description"
+
+
 def test_poc_script_lists_and_returns_fixed_template() -> None:
     listed = tools_impl.poc_script()
     assert listed["ok"] is True

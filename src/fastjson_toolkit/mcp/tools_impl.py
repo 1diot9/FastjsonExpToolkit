@@ -16,6 +16,7 @@ from fastjson_toolkit.api.schemas import (
     Poc16723Request,
     VersionRequest,
 )
+from fastjson_toolkit.config import load_dotenv
 from fastjson_toolkit.deps import FastjsonDepsDetector, default_catalog
 from fastjson_toolkit.detect import FastjsonDetector
 from fastjson_toolkit.dnslog import CeyeConfig
@@ -49,20 +50,12 @@ def _dump(model: BaseModel | None) -> dict[str, Any] | None:
     return model.model_dump(mode="json")
 
 
-def _ceye_from(
-    *,
-    use_ceye: bool,
-    ceye_token: str | None,
-    ceye_domain: str | None,
-) -> CeyeConfig | None:
-    if not use_ceye:
+def _ceye_from_env(*, enabled: bool = True) -> CeyeConfig | None:
+    """CEYE 一律读项目 .env / 环境变量；MCP 不暴露 token/domain 覆盖参数。"""
+    if not enabled:
         return None
-    env_cfg = CeyeConfig.from_env()
-    token = ceye_token or (env_cfg.token if env_cfg else None)
-    domain = ceye_domain or (env_cfg.domain if env_cfg else "hpdth2.ceye.io")
-    if not token:
-        return None
-    return CeyeConfig(token=token, domain=domain)
+    load_dotenv()
+    return CeyeConfig.from_env()
 
 
 def _err(message: str, **extra: Any) -> dict[str, Any]:
@@ -79,20 +72,17 @@ def detect_pipeline(
     *,
     include_dns_detect: bool = True,
     include_dns_version: bool = False,
-    use_ceye: bool = True,
-    dnslog: str | None = None,
-    ceye_token: str | None = None,
-    ceye_domain: str | None = None,
-    ceye_wait: float = 8.0,
     timeout: float = 10.0,
-    timing_threshold_ms: float = 800.0,
     headers: dict[str, str] | None = None,
     proxy: str | None = None,
     insecure: bool = False,
-    content_type: str = "application/json",
     base_body: str | None = None,
 ) -> dict[str, Any]:
-    """识别 → 版本 → 期望类（非 Fastjson 时跳过后续）。"""
+    """识别 → 版本 → 期望类（非 Fastjson 时跳过后续）。
+
+    DNS / CEYE：有 ``CEYE_TOKEN``（及可选 ``CEYE_DOMAIN``）时自动轮询；
+    无需也不应在 MCP 里传 token/domain。
+    """
     target = (target or "").strip()
     if not target:
         return _err("target 不能为空")
@@ -100,15 +90,15 @@ def detect_pipeline(
     headers = headers or {}
     skipped: list[str] = []
     next_actions: list[str] = []
+    content_type = "application/json"
+    ceye_wait_detect = 8.0
+    ceye_wait_version = 10.0
+    timing_threshold_ms = 800.0
 
     detect_req = DetectRequest(
         target=target,
         include_dns=include_dns_detect,
-        use_ceye=use_ceye,
-        dnslog=dnslog,
-        ceye_token=ceye_token,
-        ceye_domain=ceye_domain,
-        ceye_wait=ceye_wait,
+        use_ceye=True,
         timeout=timeout,
         timing_threshold_ms=timing_threshold_ms,
         headers=headers,
@@ -116,19 +106,14 @@ def detect_pipeline(
         insecure=insecure,
         content_type=content_type,
     )
-    ceye_cfg = _ceye_from(
-        use_ceye=detect_req.include_dns and detect_req.use_ceye,
-        ceye_token=detect_req.ceye_token,
-        ceye_domain=detect_req.ceye_domain,
-    )
+    ceye_cfg = _ceye_from_env(enabled=detect_req.include_dns)
     detector = FastjsonDetector(
         timeout=detect_req.timeout,
         headers=detect_req.headers or None,
         proxy=detect_req.proxy,
         verify_tls=not detect_req.insecure,
-        dnslog_host=detect_req.dnslog,
         ceye=ceye_cfg,
-        ceye_wait=detect_req.ceye_wait,
+        ceye_wait=ceye_wait_detect,
         timing_threshold_ms=detect_req.timing_threshold_ms,
         content_type=detect_req.content_type,
     )
@@ -159,30 +144,21 @@ def detect_pipeline(
     version_req = VersionRequest(
         target=target,
         include_dns=include_dns_version,
-        use_ceye=use_ceye,
-        dnslog=dnslog,
-        ceye_token=ceye_token,
-        ceye_domain=ceye_domain,
-        ceye_wait=max(ceye_wait, 10.0) if include_dns_version else ceye_wait,
+        use_ceye=True,
         timeout=timeout,
         headers=headers,
         proxy=proxy,
         insecure=insecure,
         content_type=content_type,
     )
-    v_ceye = _ceye_from(
-        use_ceye=version_req.include_dns and version_req.use_ceye,
-        ceye_token=version_req.ceye_token,
-        ceye_domain=version_req.ceye_domain,
-    )
+    v_ceye = _ceye_from_env(enabled=version_req.include_dns)
     version_detector = FastjsonVersionDetector(
         timeout=version_req.timeout,
         headers=version_req.headers or None,
         proxy=version_req.proxy,
         verify_tls=not version_req.insecure,
-        dnslog_host=version_req.dnslog,
         ceye=v_ceye,
-        ceye_wait=version_req.ceye_wait,
+        ceye_wait=ceye_wait_version,
         content_type=version_req.content_type,
     )
     try:
@@ -262,19 +238,13 @@ def deps_probe(
     method: str = "character",
     classes: list[str] | None = None,
     categories: list[str] | None = None,
-    use_ceye: bool = True,
-    dnslog: str | None = None,
-    ceye_token: str | None = None,
-    ceye_domain: str | None = None,
-    ceye_wait: float = 10.0,
     timeout: float = 10.0,
     concurrency: int = 6,
     headers: dict[str, str] | None = None,
     proxy: str | None = None,
     insecure: bool = False,
-    content_type: str = "application/json",
 ) -> dict[str, Any]:
-    """依赖探测。有报错回显时用 character；无回显可试 dns（需 CEYE）。"""
+    """依赖探测。有报错回显时用 character；无回显可试 dns（CEYE 读 .env）。"""
     target = (target or "").strip()
     if not target:
         return _err("target 不能为空")
@@ -288,31 +258,22 @@ def deps_probe(
         method=method,
         classes=classes or [],
         categories=categories or [],
-        use_ceye=use_ceye,
-        dnslog=dnslog,
-        ceye_token=ceye_token,
-        ceye_domain=ceye_domain,
-        ceye_wait=ceye_wait,
+        use_ceye=True,
         timeout=timeout,
         concurrency=concurrency,
         headers=headers or {},
         proxy=proxy,
         insecure=insecure,
-        content_type=content_type,
+        content_type="application/json",
     )
-    ceye_cfg = _ceye_from(
-        use_ceye=method == "dns" and req.use_ceye,
-        ceye_token=req.ceye_token,
-        ceye_domain=req.ceye_domain,
-    )
+    ceye_cfg = _ceye_from_env(enabled=method == "dns")
     detector = FastjsonDepsDetector(
         timeout=req.timeout,
         headers=req.headers or None,
         proxy=req.proxy,
         verify_tls=not req.insecure,
-        dnslog_host=req.dnslog,
         ceye=ceye_cfg,
-        ceye_wait=req.ceye_wait,
+        ceye_wait=10.0,
         content_type=req.content_type,
         concurrency=req.concurrency,
     )
