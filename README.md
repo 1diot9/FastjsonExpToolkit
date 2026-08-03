@@ -14,10 +14,7 @@ Fastjson 识别 / 版本探测 / PoC 工具箱。
 | Fastjson 版本探测 | ✅ | AutoType / SafeMode / AutoCloseable 回显 / 不出网二分 / DNSLog |
 | 期望类探测 | ✅ | Feature `@type` + 空键语法，判断是否绑定期望类 / 非 Map / &lt;1.2.68 提示 |
 | 依赖 / classpath 探测 | ✅ | Character 报错回显（推荐）/ DNS Locale（版本敏感） |
-| Web 识别页 | ✅ | `/detect`，对接真实 API |
-| Web 版本页 | ✅ | `/version`，对接 `/api/version` |
-| Web 期望类页 | ✅ | `/expect`，对接 `/api/expect` |
-| Web 依赖页 | ✅ | `/deps`，对接 `/api/deps` |
+| Web 探测页 | ✅ | `/detect`：识别/版本/期望类按序 + 依赖独立阶段；`/version` `/expect` `/deps` 重定向至此 |
 | Web PoC 页 | ✅ | `/poc`，对接 `/api/poc/cve-2026-16723` |
 | WAF 绕过 | ✅ | unicode/hex/`\u+`、多逗号、key `_`/`-`、填充、URL 编码；CLI / API / Web `/waf` |
 | MCP（Agent） | ✅ | stdio（`fjtoolkit mcp`）+ 设置页启停 HTTP（地址 / Token） |
@@ -80,10 +77,7 @@ chmod +x scripts/start.sh scripts/stop.sh
 | 服务 | 地址 |
 |------|------|
 | 前端 | http://127.0.0.1:3000 |
-| 识别页 | http://127.0.0.1:3000/detect |
-| 版本页 | http://127.0.0.1:3000/version |
-| 期望类页 | http://127.0.0.1:3000/expect |
-| 依赖页 | http://127.0.0.1:3000/deps |
+| 探测页 | http://127.0.0.1:3000/detect（识别/版本/期望类按序；依赖独立） |
 | PoC 页 | http://127.0.0.1:3000/poc |
 | WAF 页 | http://127.0.0.1:3000/waf |
 | 设置页 | http://127.0.0.1:3000/settings |
@@ -357,8 +351,8 @@ Web：`/poc` →「≤1.2.80 Exception」Tab。API：`GET/POST /api/poc/1.2.80`�
 
 | 工具 | 说明 |
 |------|------|
-| `detect_pipeline` | 识别 → 版本 → 期望类 |
-| `deps_probe` | 依赖探测（默认 `character` 报错回显） |
+| `detect_pipeline` | 识别 → 版本 → 期望类（DNS/CEYE 读 `.env`，无需传 token） |
+| `deps_probe` | 依赖探测（默认 `character` 报错回显；`dns` 亦用 `.env` CEYE） |
 | `poc_catalog` | gadget / 回显引擎 / WAF 技巧目录 |
 | `poc_run` | 生成或发送 PoC |
 | `poc_script` | 返回固定原脚本（LLM 自行按环境修改）；不传参则列目录 |

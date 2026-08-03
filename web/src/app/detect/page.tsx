@@ -35,10 +35,15 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  detectDeps,
   detectExpectClass,
   detectFastjson,
   detectVersion,
+  fetchDepsCatalog,
   fetchHealth,
+  type DepCatalogEntry,
+  type DepMethod,
+  type DepsResult,
   type DetectResult,
   type ExpectClassResult,
   type HealthResponse,
@@ -46,15 +51,15 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type StepId = "detect" | "version" | "expect";
+type StepId = "detect" | "version" | "expect" | "deps";
+type PipelineStepId = "detect" | "version" | "expect";
 type StepStatus = "idle" | "running" | "done" | "error" | "skipped";
 
-const STEPS: { id: StepId; label: string }[] = [
+const PIPELINE_STEPS: { id: PipelineStepId; label: string }[] = [
   { id: "detect", label: "识别" },
   { id: "version", label: "版本" },
   { id: "expect", label: "期望类" },
 ];
-
 const PRESETS = [
   {
     label: "Fastjson echo",
@@ -102,6 +107,15 @@ function boolLabel(v: boolean | null | undefined): string {
   if (v === true) return "是";
   if (v === false) return "否";
   return "未知";
+}
+
+function depsStatusBadgeVariant(
+  status: string,
+): "default" | "secondary" | "outline" | "destructive" {
+  if (status === "present") return "default";
+  if (status === "error") return "destructive";
+  if (status === "absent") return "secondary";
+  return "outline";
 }
 
 function StepBadge({
@@ -155,24 +169,38 @@ export default function DetectPage() {
   const [runDetect, setRunDetect] = useState(true);
   const [runVersion, setRunVersion] = useState(true);
   const [runExpect, setRunExpect] = useState(true);
+  const [depsMethod, setDepsMethod] = useState<DepMethod>("character");
+  const [concurrency, setConcurrency] = useState("6");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [customClasses, setCustomClasses] = useState("");
 
-  const [loading, setLoading] = useState(false);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [depsLoading, setDepsLoading] = useState(false);
+  const loading = pipelineLoading || depsLoading;
   const [stepStatus, setStepStatus] = useState<Record<StepId, StepStatus>>({
     detect: "idle",
     version: "idle",
     expect: "idle",
+    deps: "idle",
   });
   const [detectResult, setDetectResult] = useState<DetectResult | null>(null);
   const [versionResult, setVersionResult] = useState<VersionResult | null>(null);
   const [expectResult, setExpectResult] = useState<ExpectClassResult | null>(
     null,
   );
+  const [depsResult, setDepsResult] = useState<DepsResult | null>(null);
   const [resultTab, setResultTab] = useState<StepId>("detect");
+  const [catalog, setCatalog] = useState<DepCatalogEntry[]>([]);
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  const categories = useMemo(() => {
+    const set = new Set(catalog.map((c) => c.category));
+    return Array.from(set).sort();
+  }, [catalog]);
 
   async function refreshHealth() {
     setHealthLoading(true);
@@ -191,6 +219,9 @@ export default function DetectPage() {
   useEffect(() => {
     setMounted(true);
     void refreshHealth();
+    void fetchDepsCatalog()
+      .then(setCatalog)
+      .catch(() => setCatalog([]));
     const timer = window.setInterval(() => {
       void refreshHealth();
     }, 5000);
@@ -237,15 +268,16 @@ export default function DetectPage() {
       return;
     }
 
-    setLoading(true);
+    setPipelineLoading(true);
     setDetectResult(null);
     setVersionResult(null);
     setExpectResult(null);
-    setStepStatus({
+    setStepStatus((s) => ({
+      ...s,
       detect: runDetect ? "idle" : "skipped",
       version: runVersion ? "idle" : "skipped",
       expect: runExpect ? "idle" : "skipped",
-    });
+    }));
 
     const timeout = Number(timeoutSec) || 10;
     const wait = Number(ceyeWait) || 10;
@@ -258,7 +290,7 @@ export default function DetectPage() {
     };
 
     let isFastjson: boolean | null = null;
-    let firstTab: StepId | null = null;
+    let firstTab: PipelineStepId | null = null;
 
     try {
       if (runDetect) {
@@ -354,11 +386,59 @@ export default function DetectPage() {
 
       if (firstTab) setResultTab(firstTab);
     } finally {
-      setLoading(false);
+      setPipelineLoading(false);
     }
   }
 
-  const hasAnyResult = detectResult || versionResult || expectResult;
+  async function onDeps() {
+    if (!target.trim()) {
+      toast.error("请填写目标 URL");
+      return;
+    }
+    if (depsMethod === "dns" && !useCeye && !dnslog.trim()) {
+      toast.error("DNS 方法请启用 CEYE，或填写自定义 DNSLog 域名");
+      return;
+    }
+
+    setDepsLoading(true);
+    setDepsResult(null);
+    setStepStatus((s) => ({ ...s, deps: "running" }));
+    setResultTab("deps");
+
+    try {
+      const classes = customClasses
+        .split(/[\n,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const data = await detectDeps({
+        target: target.trim(),
+        method: depsMethod,
+        classes,
+        categories: categoryFilter === "all" ? [] : [categoryFilter],
+        use_ceye: depsMethod === "dns" && useCeye,
+        dnslog: depsMethod === "dns" && !useCeye ? dnslog.trim() : null,
+        ceye_wait: Number(ceyeWait) || 10,
+        timeout: Number(timeoutSec) || 10,
+        concurrency: Number(concurrency) || 6,
+      });
+      setDepsResult(data);
+      setStepStatus((s) => ({ ...s, deps: "done" }));
+      if (data.present_count > 0) {
+        toast.success("依赖探测完成", { description: data.summary });
+      } else {
+        toast.message("未发现命中依赖", { description: data.summary });
+      }
+    } catch (err) {
+      setStepStatus((s) => ({ ...s, deps: "error" }));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error("依赖探测失败", { description: msg });
+    } finally {
+      setDepsLoading(false);
+    }
+  }
+
+  const hasAnyResult =
+    detectResult || versionResult || expectResult || depsResult;
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
@@ -366,7 +446,7 @@ export default function DetectPage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">Fastjson 探测</h1>
           <p className="text-sm text-muted-foreground">
-            同一目标按序执行：识别 → 版本 → 期望类。识别非 Fastjson 时自动跳过后续步骤。
+            识别 → 版本 → 期望类可按序执行；依赖为独立阶段，可单独发起，不依赖前三步结果。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -407,10 +487,9 @@ export default function DetectPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>探测参数</CardTitle>
+          <CardTitle>识别 / 版本 / 期望类</CardTitle>
           <CardDescription>
-            默认开启全部三步并依次执行；可按需关闭某一步。期望类探测可附带原始业务
-            JSON。
+            按序执行；识别非 Fastjson 时自动跳过版本与期望类。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -554,7 +633,7 @@ export default function DetectPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={() => void onPipeline()} disabled={loading}>
-              {loading ? (
+              {pipelineLoading ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Play className="size-4" />
@@ -562,7 +641,7 @@ export default function DetectPage() {
               按序探测
             </Button>
             <div className="flex flex-wrap gap-2">
-              {STEPS.map((step) => (
+              {PIPELINE_STEPS.map((step) => (
                 <StepBadge
                   key={step.id}
                   label={step.label}
@@ -571,6 +650,157 @@ export default function DetectPage() {
                 />
               ))}
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>依赖探测</CardTitle>
+          <CardDescription>
+            独立阶段，不依赖上方识别结果。默认 Character 报错回显；与上方共用目标
+            URL。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="deps-target">目标 URL</Label>
+            <Input
+              id="deps-target"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="http://127.0.0.1:18080/api/fastjson"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>方法</Label>
+              <Select
+                value={depsMethod}
+                onValueChange={(v) => {
+                  if (v === "character" || v === "dns") setDepsMethod(v);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="character">
+                    character（报错回显）
+                  </SelectItem>
+                  <SelectItem value="dns">dns（Locale+Inet4）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>类别过滤</Label>
+              <Select
+                value={categoryFilter}
+                onValueChange={(v) => {
+                  if (v) setCategoryFilter(v);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="全部" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部内置类</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="deps-timeout">超时（秒）</Label>
+              <Input
+                id="deps-timeout"
+                value={timeoutSec}
+                onChange={(e) => setTimeoutSec(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="concurrency">并发</Label>
+              <Input
+                id="concurrency"
+                value={concurrency}
+                onChange={(e) => setConcurrency(e.target.value)}
+                disabled={depsMethod !== "character"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deps-ceye-wait">CEYE 等待（秒）</Label>
+              <Input
+                id="deps-ceye-wait"
+                value={ceyeWait}
+                onChange={(e) => setCeyeWait(e.target.value)}
+                disabled={depsMethod !== "dns" || !useCeye}
+              />
+            </div>
+          </div>
+
+          {depsMethod === "dns" ? (
+            <div className="space-y-3">
+              <Button
+                type="button"
+                size="sm"
+                variant={useCeye ? "default" : "outline"}
+                onClick={() => setUseCeye((v) => !v)}
+              >
+                CEYE 确认：{useCeye ? "开" : "关"}
+              </Button>
+              {!useCeye ? (
+                <div className="space-y-2">
+                  <Label htmlFor="deps-dnslog">自定义 DNSLog 域名</Label>
+                  <Input
+                    id="deps-dnslog"
+                    value={dnslog}
+                    onChange={(e) => setDnslog(e.target.value)}
+                    placeholder="xxxx.ceye.io 或 xxx.dnslog.cn"
+                  />
+                </div>
+              ) : null}
+              <Alert>
+                <AlertTitle>DNS 方法说明</AlertTitle>
+                <AlertDescription>
+                  Locale+Class+Inet4 链对 Fastjson 版本 / autoType
+                  极敏感，本地靶场经常无 DNS。优先用 character。
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <Label htmlFor="custom-classes">自定义类名（可选）</Label>
+            <Textarea
+              id="custom-classes"
+              className="min-h-24 font-mono text-xs"
+              value={customClasses}
+              onChange={(e) => setCustomClasses(e.target.value)}
+              placeholder={
+                "留空则扫描内置目录；每行一个全限定类名，例如：\norg.springframework.web.bind.annotation.RequestMapping"
+              }
+            />
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={() => void onDeps()} disabled={loading}>
+              {depsLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Play className="size-4" />
+              )}
+              开始依赖探测
+            </Button>
+            <StepBadge label="依赖" status={stepStatus.deps} enabled />
           </div>
         </CardContent>
       </Card>
@@ -596,6 +826,15 @@ export default function DetectPage() {
                     期望类 {boolLabel(expectResult.has_expect_class)}
                   </Badge>
                 ) : null}
+                {depsResult ? (
+                  <Badge
+                    variant={
+                      depsResult.present_count ? "default" : "secondary"
+                    }
+                  >
+                    依赖 {depsResult.present_count}/{depsResult.scanned}
+                  </Badge>
+                ) : null}
               </div>
             </div>
             <CardDescription className="break-all">{target}</CardDescription>
@@ -604,7 +843,12 @@ export default function DetectPage() {
             <Tabs
               value={resultTab}
               onValueChange={(v) => {
-                if (v === "detect" || v === "version" || v === "expect") {
+                if (
+                  v === "detect" ||
+                  v === "version" ||
+                  v === "expect" ||
+                  v === "deps"
+                ) {
                   setResultTab(v);
                 }
               }}
@@ -618,6 +862,9 @@ export default function DetectPage() {
                 </TabsTrigger>
                 <TabsTrigger value="expect" disabled={!expectResult}>
                   期望类
+                </TabsTrigger>
+                <TabsTrigger value="deps" disabled={!depsResult}>
+                  依赖
                 </TabsTrigger>
               </TabsList>
 
@@ -980,6 +1227,154 @@ export default function DetectPage() {
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">暂无期望类结果</p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="deps" className="mt-4 space-y-4">
+                {depsResult ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge
+                        variant={
+                          depsResult.present_count ? "default" : "secondary"
+                        }
+                      >
+                        命中 {depsResult.present_count}/{depsResult.scanned}
+                      </Badge>
+                      <Badge variant="outline">{depsResult.method}</Badge>
+                      {depsResult.absent_count ? (
+                        <Badge variant="outline">
+                          absent {depsResult.absent_count}
+                        </Badge>
+                      ) : null}
+                      {depsResult.unknown_count ? (
+                        <Badge variant="outline">
+                          unknown {depsResult.unknown_count}
+                        </Badge>
+                      ) : null}
+                      {depsResult.error_count ? (
+                        <Badge variant="destructive">
+                          error {depsResult.error_count}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <Alert>
+                      <AlertTitle>摘要</AlertTitle>
+                      <AlertDescription>{depsResult.summary}</AlertDescription>
+                    </Alert>
+                    {depsResult.notes.length ? (
+                      <Alert>
+                        <AlertTitle>说明</AlertTitle>
+                        <AlertDescription>
+                          <ul className="list-disc space-y-1 pl-4">
+                            {depsResult.notes.map((n) => (
+                              <li key={n}>{n}</li>
+                            ))}
+                          </ul>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+                    <Tabs defaultValue="present">
+                      <TabsList>
+                        <TabsTrigger value="present">命中</TabsTrigger>
+                        <TabsTrigger value="all">全部</TabsTrigger>
+                        <TabsTrigger value="actions">建议</TabsTrigger>
+                        <TabsTrigger value="raw">JSON</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="present" className="mt-4">
+                        {depsResult.present.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            无命中依赖
+                          </p>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>依赖</TableHead>
+                                <TableHead>类名</TableHead>
+                                <TableHead>类别</TableHead>
+                                <TableHead>匹配</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {depsResult.present.map((hit) => (
+                                <TableRow key={hit.clazz}>
+                                  <TableCell className="font-medium">
+                                    {hit.description}
+                                  </TableCell>
+                                  <TableCell className="max-w-xs truncate font-mono text-xs">
+                                    {hit.clazz}
+                                  </TableCell>
+                                  <TableCell>{hit.category}</TableCell>
+                                  <TableCell>
+                                    {hit.matched.join(", ") || "-"}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        )}
+                      </TabsContent>
+                      <TabsContent value="all" className="mt-4">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>状态</TableHead>
+                              <TableHead>依赖</TableHead>
+                              <TableHead>类名</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>耗时</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {depsResult.results.map((hit) => (
+                              <TableRow key={`${hit.clazz}-${hit.status}`}>
+                                <TableCell>
+                                  <Badge
+                                    variant={depsStatusBadgeVariant(hit.status)}
+                                  >
+                                    {hit.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{hit.description}</TableCell>
+                                <TableCell className="max-w-xs truncate font-mono text-xs">
+                                  {hit.clazz}
+                                </TableCell>
+                                <TableCell>{hit.status_code || "-"}</TableCell>
+                                <TableCell>
+                                  {hit.elapsed_ms
+                                    ? `${hit.elapsed_ms}ms`
+                                    : "-"}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TabsContent>
+                      <TabsContent value="actions" className="mt-4 space-y-2">
+                        {depsResult.next_actions.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            无额外建议
+                          </p>
+                        ) : (
+                          <ol className="list-decimal space-y-1 pl-5 text-sm">
+                            {depsResult.next_actions.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ol>
+                        )}
+                      </TabsContent>
+                      <TabsContent value="raw" className="mt-4">
+                        <Textarea
+                          className="min-h-72 font-mono text-xs"
+                          readOnly
+                          value={JSON.stringify(depsResult, null, 2)}
+                        />
+                      </TabsContent>
+                    </Tabs>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">暂无依赖结果</p>
                 )}
               </TabsContent>
             </Tabs>

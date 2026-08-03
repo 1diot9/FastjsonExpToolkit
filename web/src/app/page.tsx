@@ -5,7 +5,6 @@ import {
   Bomb,
   Container,
   Library,
-  PackageSearch,
   ScanSearch,
   Settings,
   ShieldOff,
@@ -31,7 +30,7 @@ export default function Home() {
           FastjsonExpToolkit
         </h1>
         <p className="max-w-xl text-muted-foreground">
-          Fastjson 探测 / 依赖 / PoC / WAF 绕过工具箱。识别、版本、期望类已合并为按序探测；另含依赖、
+          Fastjson 探测 / PoC / WAF 绕过工具箱。识别、版本、期望类可按序探测，依赖为同页独立阶段；另含
           PoC 与 WAF 变换；UI 基于{" "}
           <a
             className="underline underline-offset-4"
@@ -53,32 +52,14 @@ export default function Home() {
               Fastjson 探测
             </CardTitle>
             <CardDescription>
-              识别 → 版本 → 期望类按序执行，对接{" "}
+              识别 → 版本 → 期望类按序执行；依赖为同页独立阶段。对接{" "}
               <code>/api/detect</code>、<code>/api/version</code>、
-              <code>/api/expect</code>。
+              <code>/api/expect</code>、<code>/api/deps</code>。
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/detect" className={cn(buttonVariants())}>
               打开探测页
-              <ArrowRight className="size-4" data-icon="inline-end" />
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PackageSearch className="size-5" />
-              依赖探测
-            </CardTitle>
-            <CardDescription>
-              对接 <code>/api/deps</code>，Character 报错 / DNS 探测 classpath。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/deps" className={cn(buttonVariants())}>
-              打开依赖页
               <ArrowRight className="size-4" data-icon="inline-end" />
             </Link>
           </CardContent>

@@ -54,7 +54,7 @@ Backend (Python FastAPI)
 | CVE-2026-16723 | `poc/cve_2026_16723/`：jar:http / fd-cache / 回显 / 可选 MemShellParty |
 | Docker 靶场 | 指纹对照、版本矩阵、各版本 gadget 依赖靶场、Undertow 1.2.83 |
 | HTTP 性能 | 复用 `httpx.Client`，本地 detect ~1s 级 |
-| Web | `/detect` `/version` `/expect` `/deps` `/poc` `/waf` `/settings` |
+| Web | `/detect`（识别/版本/期望类按序 + 依赖独立；旧路径重定向）`/poc` `/waf` `/settings` |
 
 ### 3.2 靶场验证结论
 
@@ -198,7 +198,7 @@ Backend (Python FastAPI)
 
 | 工具 | 作用 |
 |------|------|
-| `detect_pipeline` | 识别 → 版本 → 期望类 |
+| `detect_pipeline` | 识别 → 版本 → 期望类（CEYE 读 `.env`） |
 | `deps_probe` | 依赖探测 |
 | `poc_catalog` / `poc_run` | PoC 目录与生成/发送 |
 | `poc_script` | 固定原脚本（LLM 自行改）；不传参列目录 |

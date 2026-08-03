@@ -378,7 +378,7 @@ if __name__ == "__main__":
     print(f"[*] 扫描完成，共发现 {len(results)} 个依赖")
 ```
 
-本工具的依赖探测页对接 `/api/deps`，实现了同类 Character 报错思路。
+本工具的探测页依赖步骤对接 `/api/deps`，实现了同类 Character 报错思路。
 
 ---
 

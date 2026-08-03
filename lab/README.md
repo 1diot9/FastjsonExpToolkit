@@ -62,7 +62,7 @@ cd lab/cve-2026-16723 && docker compose up --build -d
 | `POST /api/orgjson` | org.json |
 | `POST /api/hutool` | Hutool JSON |
 
-对应工具能力：识别（`/detect`）、期望类（`/expect`）、依赖（`/deps`）、DNS 出网。
+对应工具能力：探测页 `/detect`（识别 / 期望类 / 依赖）、DNS 出网。
 
 ---
 
@@ -113,7 +113,7 @@ cd lab/cve-2026-16723 && docker compose up --build -d
 | `POST /api/fastjson` 或 `/json` | `JSON.parse`，AutoType off |
 | `GET/DELETE /api/markers` | 查看 / 清理证明文件 |
 
-一键验证：`python scripts/lab_test_1247_gadgets.py`  
+一键验证：`python tests/lab/lab_test_1247_gadgets.py`  
 对应：`fjtoolkit poc-1247`、Web `/poc` →「≤1.2.47」。详见 [fastjson-1247-lab/README.md](fastjson-1247-lab/README.md)。
 
 ---
@@ -136,7 +136,7 @@ cd lab/cve-2026-16723 && docker compose up --build -d
 | `POST /api/fastjson` 或 `/json` | `JSON.parse`，AutoType off |
 | `GET/DELETE /api/markers` | 查看 / 清理证明文件 |
 
-一键验证：`python scripts/lab_test_1268_gadgets.py`  
+一键验证：`python tests/lab/lab_test_1268_gadgets.py`  
 对应：`fjtoolkit poc-1268`、Web `/poc` →「≤1.2.68」。详见 [fastjson-1268-lab/README.md](fastjson-1268-lab/README.md)。
 
 ---
@@ -161,7 +161,7 @@ cd lab/cve-2026-16723 && docker compose up --build -d
 | `GET/DELETE /api/markers` | 证明文件 |
 | `GET /attack/evil.jar` 等 | Groovy SPI / Spring XML 攻击资产 |
 
-一键验证：`python scripts/lab_test_1280_gadgets.py`  
+一键验证：`python tests/lab/lab_test_1280_gadgets.py`  
 对应：`fjtoolkit poc-1280`、Web `/poc` →「≤1.2.80」。详见 [fastjson-1280-lab/README.md](fastjson-1280-lab/README.md)。
 
 ---
