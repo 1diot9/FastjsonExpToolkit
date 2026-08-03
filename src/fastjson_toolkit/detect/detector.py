@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
-from typing import Mapping, Optional
-from urllib.parse import urljoin, urlparse
+from typing import Any, Mapping, Optional
+from urllib.parse import urljoin, urlparse, urlunparse
 
 from fastjson_toolkit.detect.models import DetectResult, Evidence, LibraryGuess
 from fastjson_toolkit.detect.probes import Probe, all_probes, baseline_timing_payload
@@ -19,6 +20,25 @@ _STRONG_FJ_PROBES = frozenset({
     "parse_ref",
 })
 
+_COMMON_DESER_PATHS = (
+    "/api/fastjson",
+    "/json",
+    "/api/json",
+    "/fastjson",
+)
+
+_FJ_HINT_MARKERS = (
+    "fastjson",
+    "JSONException",
+    "autoType",
+    "autotype is not support",
+    "syntax error",
+    "not close json text",
+)
+
+# Cheap broken-JSON probe used only for path discovery.
+_PATH_PROBE_PAYLOAD = '{"@type":"java.lang.AutoCloseable"'
+
 
 def _excerpt(text: str, limit: int = 400) -> str:
     text = text.replace("\r", "\\r").replace("\n", "\\n")
@@ -32,6 +52,16 @@ def _contains_any(text: str, needles: tuple[str, ...]) -> list[str]:
         if n.lower() in lower:
             hit.append(n)
     return hit
+
+
+def _origin(url: str) -> str:
+    parsed = urlparse(url)
+    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
+
+def _is_rootish_path(path: str) -> bool:
+    p = (path or "").rstrip("/")
+    return p in ("",) or p.endswith("/index.html") or p.endswith("/index.htm")
 
 
 def _resolve_url(target: str, prefer_typed: bool) -> str:
@@ -101,15 +131,33 @@ class FastjsonDetector:
         strong_fj_hits = 0
         sent_dns_probe = False
 
+        resolved_url, path_meta = self._resolve_deser_target(target)
+        if path_meta.get("resolved") and resolved_url != target:
+            evidence.append(
+                Evidence(
+                    probe_id="path_discovery",
+                    category="path",
+                    description="根路径/非反序列化点 → 自动发现候选端点",
+                    matched=path_meta.get("tried") or [],
+                    score_delta=0.0,
+                    response_excerpt=_excerpt(
+                        json.dumps(path_meta.get("health") or {}, ensure_ascii=False)
+                    ),
+                    payload=resolved_url,
+                )
+            )
+
         try:
-            base_url = _resolve_url(target, prefer_typed=False)
-            base_resp = self.client.post_raw(base_url, baseline_timing_payload(), self.content_type)
+            base_url = _resolve_url(resolved_url, prefer_typed=False)
+            base_resp = self.client.post_raw(
+                base_url, baseline_timing_payload(), self.content_type
+            )
             baseline_ms = base_resp.elapsed_ms
         except Exception:
             baseline_ms = None
 
         for probe in probes:
-            url = _resolve_url(target, prefer_typed=probe.prefer_typed)
+            url = _resolve_url(resolved_url, prefer_typed=probe.prefer_typed)
             try:
                 resp = self.client.post_raw(url, probe.payload, self.content_type)
             except Exception as exc:
@@ -248,10 +296,13 @@ class FastjsonDetector:
             dns_confirmed=dns_confirmed,
             scores=scores,
             strong_fj_hits=strong_fj_hits,
+            path_meta=path_meta,
+            original_target=target,
+            resolved_url=resolved_url,
         )
 
         return DetectResult(
-            target=target,
+            target=resolved_url,
             is_fastjson=is_fastjson,
             confidence=round(confidence, 3),
             autotype_disabled_hint=autotype_disabled,
@@ -271,6 +322,9 @@ class FastjsonDetector:
                 "dnslog_host": dns_host,
                 "strong_fj_hits": strong_fj_hits,
                 "ceye_domain": self.ceye_config.domain if self.ceye_config else None,
+                "original_target": target,
+                "resolved_url": resolved_url,
+                "path_discovery": path_meta,
             },
         )
 
@@ -365,6 +419,114 @@ class FastjsonDetector:
             strong,
         )
 
+    def _resolve_deser_target(self, target: str) -> tuple[str, dict[str, Any]]:
+        """If target looks like a site root, try /api/health + common deser paths."""
+        raw = (target or "").strip()
+        if not raw:
+            return raw, {"resolved": False}
+        if "://" not in raw:
+            raw = "http://" + raw
+        parsed = urlparse(raw)
+        meta: dict[str, Any] = {
+            "resolved": False,
+            "original": raw,
+            "tried": [],
+            "health": None,
+        }
+        if not _is_rootish_path(parsed.path):
+            return raw, meta
+
+        origin = _origin(raw)
+        candidates: list[str] = []
+        health_url = urljoin(origin + "/", "api/health")
+        try:
+            health_resp = self.client.get_raw(health_url)
+            if health_resp.status_code == 200 and health_resp.text:
+                try:
+                    health_obj = json.loads(health_resp.text)
+                except json.JSONDecodeError:
+                    health_obj = None
+                if isinstance(health_obj, dict):
+                    meta["health"] = health_obj
+                    endpoints = health_obj.get("endpoints") or []
+                    if isinstance(endpoints, list):
+                        for ep in endpoints:
+                            if not isinstance(ep, str):
+                                continue
+                            path = ep.strip()
+                            if not path.startswith("/"):
+                                path = "/" + path
+                            # Prefer real deser points; skip health/markers/attack assets
+                            low = path.lower()
+                            if any(
+                                x in low
+                                for x in (
+                                    "health",
+                                    "marker",
+                                    "attack",
+                                    "reset",
+                                    "silent",
+                                )
+                            ):
+                                continue
+                            candidates.append(urljoin(origin + "/", path.lstrip("/")))
+                else:
+                    meta["health"] = {"raw": _excerpt(health_resp.text, 200)}
+        except Exception as exc:  # noqa: BLE001
+            meta["health_error"] = f"{type(exc).__name__}: {exc}"
+
+        for path in _COMMON_DESER_PATHS:
+            candidates.append(urljoin(origin + "/", path.lstrip("/")))
+
+        # Prefer the original root URL (vulhub etc. deserialize on `/`)
+        root_url = origin + "/"
+        candidates.insert(0, root_url)
+
+        # Dedupe preserve order
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                ordered.append(c)
+
+        best: Optional[str] = None
+        best_score = -1
+        for cand in ordered:
+            meta["tried"].append(cand)
+            try:
+                resp = self.client.post_raw(
+                    cand, _PATH_PROBE_PAYLOAD, self.content_type
+                )
+            except Exception:
+                continue
+            if resp.status_code == 404:
+                continue
+            text = resp.text or ""
+            score = 0
+            if any(m.lower() in text.lower() for m in _FJ_HINT_MARKERS):
+                score += 3
+            if resp.status_code >= 400:
+                score += 1
+            if resp.status_code == 200 and text.strip() not in ("", "{}"):
+                score += 1
+            if score > best_score:
+                best_score = score
+                best = cand
+            if score >= 3:
+                break
+
+        if best and best_score > 0:
+            meta["resolved"] = True
+            meta["resolved_url"] = best
+            meta["score"] = best_score
+            return best, meta
+
+        # Keep the original root rather than a known-404 common path
+        meta["resolved"] = False
+        meta["resolved_url"] = raw
+        return raw, meta
+
     def _build_summary(
         self,
         is_fastjson: bool,
@@ -375,9 +537,15 @@ class FastjsonDetector:
         dns_confirmed: Optional[bool],
         scores: dict[str, float],
         strong_fj_hits: int,
+        path_meta: Optional[dict[str, Any]] = None,
+        original_target: str = "",
+        resolved_url: str = "",
     ) -> tuple[str, list[str]]:
+        path_meta = path_meta or {}
         if is_fastjson:
             parts = [f"判定为 Fastjson（置信度 {confidence:.2f}，强特征 {strong_fj_hits}）"]
+            if path_meta.get("resolved") and original_target and resolved_url != original_target:
+                parts.append(f"已将探测点解析为 {resolved_url}")
             if autotype_disabled is True:
                 parts.append("响应提示 autoType 未开启")
             elif autotype_disabled is False:
@@ -389,11 +557,15 @@ class FastjsonDetector:
             if dns_timing_suspicious:
                 parts.append("DNS 探针耗时明显增加")
             next_actions = [
-                "打开版本识别页 /version，收敛版本区间",
-                "打开期望类页 /expect，判断反序列化点是否绑定期望类",
-                "若 autoType 关闭，优先考虑 expectClass / 其它绕过链",
-                "可对 /api/fastjson/autotype 类开启点复测 DNSLog",
+                "继续使用当前 target 跑 deps_probe（自动校准 Character/Class）",
+                "poc_catalog 按版本选 family；AutoType 关时 poc_run(expect_bypass=true)",
+                "docs_list → docs_get 查阅对应版本分析",
             ]
+            if autotype_disabled is True:
+                next_actions.insert(
+                    1,
+                    "AutoType 关闭：优先 expectClass / 1.2.68 AutoCloseable / 1.2.80 Exception 链",
+                )
             return "；".join(parts), next_actions
 
         ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
@@ -402,11 +574,20 @@ class FastjsonDetector:
             f"未达到 Fastjson 判定阈值（强特征 {strong_fj_hits}）；"
             f"当前更像 {top_name}（score={top_score:.2f}），主猜测={primary_guess.value}"
         )
+        if path_meta.get("health") and isinstance(path_meta["health"], dict):
+            eps = path_meta["health"].get("endpoints")
+            if eps:
+                summary += f"；health 列出 endpoints={eps}（根路径 404≠无 Fastjson）"
         if dns_confirmed is False:
             summary += "；CEYE 无 DNS 记录"
         next_actions = [
-            "确认请求是否真正打到 JSON 反序列化点",
+            "确认 target 为 JSON 反序列化 POST 点（如 /api/fastjson），不要只用站点根路径",
+            "可先 GET /api/health 查看 endpoints，再 detect_pipeline(target=完整反序列化 URL)",
             "尝试调整 Content-Type / 参数位置（body/query/header）",
-            "对照 jackson/gson/org.json/hutool 特征探针结果",
         ]
+        if path_meta.get("tried"):
+            next_actions.insert(
+                1,
+                f"已尝试候选：{', '.join(path_meta['tried'][:6])}；请改用明确反序列化 URL 重试",
+            )
         return summary, next_actions
