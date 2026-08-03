@@ -1243,6 +1243,9 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState("3308");
   const [jdbcUrl, setJdbcUrl] = useState("");
+  const [mysqlVersion, setMysqlVersion] = useState("5.1");
+  const [outbound, setOutbound] = useState("true");
+  const [namedPipePath, setNamedPipePath] = useState("/tmp/mysql.pcap");
   const [socketFactoryArg, setSocketFactoryArg] = useState(
     "http://host.docker.internal:18099/bean.xml",
   );
@@ -1289,6 +1292,12 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
         host: host.trim() || null,
         port: port ? Number(port) : null,
         jdbc_url: jdbcUrl.trim() || null,
+        mysql_version: fields.has("mysql_version") ? mysqlVersion : null,
+        outbound: fields.has("outbound") ? outbound === "true" : true,
+        named_pipe_path:
+          fields.has("named_pipe_path") && outbound === "false"
+            ? namedPipePath.trim() || null
+            : null,
         socket_factory_arg: socketFactoryArg.trim() || null,
         wrap_currency: wrapCurrency === "true",
         currency_field: currencyField,
@@ -1445,6 +1454,40 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
             </div>
           ) : null}
 
+          {fields.has("mysql_version") || fields.has("outbound") ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {fields.has("mysql_version") ? (
+                <div className="grid gap-2">
+                  <Label>MySQL 驱动版本</Label>
+                  <Select value={mysqlVersion} onValueChange={setMysqlVersion}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5.1">5.1.1 ~ 5.1.48</SelectItem>
+                      <SelectItem value="6.0">6.0.2 / 6.0.3</SelectItem>
+                      <SelectItem value="8.0">≤ 8.0.19</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {fields.has("outbound") ? (
+                <div className="grid gap-2">
+                  <Label>是否出网</Label>
+                  <Select value={outbound} onValueChange={setOutbound}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">出网</SelectItem>
+                      <SelectItem value="false">不出网（NamedPipe）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {fields.has("host") || fields.has("port") ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
@@ -1458,9 +1501,21 @@ function Poc1268Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
             </div>
           ) : null}
 
-          {fields.has("jdbc_url") ? (
+          {fields.has("named_pipe_path") && outbound === "false" ? (
             <div className="grid gap-2">
-              <Label>JDBC URL</Label>
+              <Label>NamedPipe 路径</Label>
+              <Input
+                value={namedPipePath}
+                onChange={(e) => setNamedPipePath(e.target.value)}
+                placeholder="/tmp/mysql.pcap"
+              />
+            </div>
+          ) : null}
+
+          {fields.has("jdbc_url") &&
+          (mysqlVersion === "6.0" || !fields.has("mysql_version")) ? (
+            <div className="grid gap-2">
+              <Label>JDBC URL（可选，覆盖自动拼装）</Label>
               <Textarea
                 className="min-h-16 font-mono text-xs"
                 value={jdbcUrl}
@@ -1705,6 +1760,8 @@ function Poc1280Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
   const [guessByte, setGuessByte] = useState("70");
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState("2333");
+  const [outbound, setOutbound] = useState("true");
+  const [namedPipePath, setNamedPipePath] = useState("/tmp/mysql.pcap");
   const [socketFactoryArg, setSocketFactoryArg] = useState(
     "http://127.0.0.1:18080/attack/bean-postgresql.xml",
   );
@@ -1748,6 +1805,11 @@ function Poc1280Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
         guess_byte: guessByte ? Number(guessByte) : null,
         host: host.trim() || null,
         port: port ? Number(port) : null,
+        outbound: fields.has("outbound") ? outbound === "true" : true,
+        named_pipe_path:
+          fields.has("named_pipe_path") && outbound === "false"
+            ? namedPipePath.trim() || null
+            : null,
         socket_factory_arg: socketFactoryArg.trim() || null,
         classpath: classpath.trim() || null,
         wrap_currency: wrapCurrency === "true",
@@ -1798,14 +1860,21 @@ function Poc1280Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
         <CardHeader>
           <CardTitle>生成参数</CardTitle>
           <CardDescription>
-            对接 <code>/api/poc/1.2.80</code>。一律以写文件证明 RCE；靶场{" "}
+            对接 <code>/api/poc/1.2.80</code>。多数链以写文件证明 RCE；
+            MySQL JDBC 为出网/NamedPipe。靶场{" "}
             <code>lab/fastjson-1280-lab</code> → <code>18280</code>。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2">
             <Label>Gadget</Label>
-            <Select value={gadget} onValueChange={setGadget}>
+            <Select
+              value={gadget}
+              onValueChange={(v) => {
+                setGadget(v);
+                if (v === "mysql_jdbc") setPort("3308");
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1868,6 +1937,27 @@ function Poc1280Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
             </div>
           ) : null}
 
+          {fields.has("outbound") ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>是否出网</Label>
+                <Select value={outbound} onValueChange={setOutbound}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">出网</SelectItem>
+                    <SelectItem value="false">不出网（NamedPipe）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>驱动版本</Label>
+                <Input value="5.1.x（≤5.1.48）" disabled />
+              </div>
+            </div>
+          ) : null}
+
           {fields.has("host") || fields.has("port") ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
@@ -1878,6 +1968,17 @@ function Poc1280Panel({ wrapCurrency, currencyField, waf }: GlobalPocExtras) {
                 <Label>Port</Label>
                 <Input value={port} onChange={(e) => setPort(e.target.value)} />
               </div>
+            </div>
+          ) : null}
+
+          {fields.has("named_pipe_path") && outbound === "false" ? (
+            <div className="grid gap-2">
+              <Label>NamedPipe 路径</Label>
+              <Input
+                value={namedPipePath}
+                onChange={(e) => setNamedPipePath(e.target.value)}
+                placeholder="/tmp/mysql.pcap"
+              />
             </div>
           ) : null}
 

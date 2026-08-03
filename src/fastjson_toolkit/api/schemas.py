@@ -281,6 +281,15 @@ class Poc1268Request(BaseModel):
     port: Optional[int] = None
     user: Optional[str] = None
     jdbc_url: Optional[str] = None
+    mysql_version: Optional[str] = Field(
+        "5.1", description="mysql_jdbc：5.1 / 6.0 / 8.0"
+    )
+    outbound: bool = Field(
+        True, description="mysql_jdbc：true=出网；false=NamedPipe 不出网"
+    )
+    named_pipe_path: Optional[str] = Field(
+        "/tmp/mysql.pcap", description="mysql_jdbc 不出网 pipe 路径"
+    )
     socket_factory_arg: Optional[str] = None
     wrap_currency: bool = Field(
         False,
@@ -363,6 +372,12 @@ class Poc1280Request(BaseModel):
     host: Optional[str] = None
     port: Optional[int] = None
     user: Optional[str] = None
+    outbound: bool = Field(
+        True, description="mysql_jdbc：true=出网；false=NamedPipe 不出网"
+    )
+    named_pipe_path: Optional[str] = Field(
+        "/tmp/mysql.pcap", description="mysql_jdbc 不出网 pipe 路径"
+    )
     socket_factory_arg: Optional[str] = None
     classpath: Optional[str] = Field(None, description="groovy classpathList jar URL")
     wrap_currency: bool = Field(

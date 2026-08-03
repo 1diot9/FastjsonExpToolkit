@@ -19,11 +19,16 @@ GadgetKind = Literal[
     "io_final",
     "io_read_error",
     "io_read_echo",
-    "mysql_jdbc_51",
-    "mysql_jdbc_60",
-    "mysql_jdbc_80",
+    "mysql_jdbc",
     "postgresql_ssrf",
 ]
+
+# 旧 gadget id → mysql_version（兼容 CLI / lab / 单测）
+MYSQL_JDBC_ALIASES: dict[str, str] = {
+    "mysql_jdbc_51": "5.1",
+    "mysql_jdbc_60": "6.0",
+    "mysql_jdbc_80": "8.0",
+}
 
 
 @dataclass(frozen=True)
@@ -177,28 +182,28 @@ GADGETS: tuple[GadgetEntry, ...] = (
         references=("https://b1ue.cn/archives/506.html",),
     ),
     GadgetEntry(
-        id="mysql_jdbc_51",
-        title="MySQL JDBC 5.1.x 出网 RCE",
-        description="JDBC4Connection + ServerStatusDiffInterceptor + autoDeserialize。",
-        requires=("mysql-connector-java 5.1.1–5.1.48",),
+        id="mysql_jdbc",
+        title="MySQL JDBC RCE（多版本 / 出网·不出网）",
+        description=(
+            "合并 5.1.x / 6.0.2·6.0.3 / ≤8.0.19；出网连恶意 MySQL，"
+            "不出网需先写 NamedPipe 文件再本地加载。"
+        ),
+        requires=(
+            "mysql-connector-java 5.1.1–5.1.48 或 6.0.2/6.0.3 或 ≤8.0.19",
+        ),
         jdk="8+",
-        input_fields=("host", "port", "user"),
-    ),
-    GadgetEntry(
-        id="mysql_jdbc_60",
-        title="MySQL JDBC 6.0.2/6.0.3 出网 RCE",
-        description="LoadBalancedMySQLConnection + connectionString url。",
-        requires=("mysql-connector-java 6.0.2/6.0.3",),
-        jdk="8+",
-        input_fields=("jdbc_url",),
-    ),
-    GadgetEntry(
-        id="mysql_jdbc_80",
-        title="MySQL JDBC ≤8.0.19 出网 RCE",
-        description="ReplicationMySQLConnection + LoadBalancedConnectionProxy。",
-        requires=("mysql-connector-java ≤8.0.19",),
-        jdk="8+",
-        input_fields=("host", "port", "user"),
+        input_fields=(
+            "mysql_version",
+            "outbound",
+            "host",
+            "port",
+            "user",
+            "named_pipe_path",
+            "jdbc_url",
+        ),
+        references=(
+            "https://1diot9.github.io/2025/05/05/mysql-JDBC-%E7%BB%95%E8%BF%87/",
+        ),
     ),
     GadgetEntry(
         id="postgresql_ssrf",
@@ -218,8 +223,9 @@ GADGETS: tuple[GadgetEntry, ...] = (
 
 
 def get_gadget(gadget_id: str) -> GadgetEntry:
+    gid = "mysql_jdbc" if gadget_id in MYSQL_JDBC_ALIASES else gadget_id
     for g in GADGETS:
-        if g.id == gadget_id:
+        if g.id == gid:
             return g
     raise KeyError(f"未知 gadget: {gadget_id}")
 

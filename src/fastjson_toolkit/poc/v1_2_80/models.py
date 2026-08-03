@@ -49,6 +49,14 @@ class Poc1280GenerateOptions(BaseModel):
     host: Optional[str] = Field(None, description="MySQL/PG host")
     port: Optional[int] = Field(None, description="MySQL/PG port")
     user: Optional[str] = Field(None, description="MySQL user")
+    outbound: bool = Field(
+        True,
+        description="mysql_jdbc：true=出网；false=NamedPipe 不出网",
+    )
+    named_pipe_path: Optional[str] = Field(
+        "/tmp/mysql.pcap",
+        description="mysql_jdbc 不出网 NamedPipe 路径",
+    )
     socket_factory_arg: Optional[str] = Field(
         None, description="postgresql/jython ClassPathXml URL"
     )

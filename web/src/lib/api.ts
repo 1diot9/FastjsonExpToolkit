@@ -591,6 +591,9 @@ export type Poc1268Request = {
   port?: number | null;
   user?: string | null;
   jdbc_url?: string | null;
+  mysql_version?: string | null;
+  outbound?: boolean;
+  named_pipe_path?: string | null;
   socket_factory_arg?: string | null;
   wrap_currency?: boolean;
   currency_field?: string;
@@ -651,6 +654,8 @@ export type Poc1280Request = {
   host?: string | null;
   port?: number | null;
   user?: string | null;
+  outbound?: boolean;
+  named_pipe_path?: string | null;
   socket_factory_arg?: string | null;
   classpath?: string | null;
   wrap_currency?: boolean;

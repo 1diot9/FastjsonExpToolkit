@@ -259,6 +259,7 @@ def main() -> int:
     results["io_read_error_brute"] = "PASS" if ok_brute else "FAIL"
     print("    PASS" if ok_brute else "    FAIL")
 
+
     # --- JDBC：证明绕过黑名单并尝试连接（期望连接失败类错误，而非 autoType not support）---
     def check_jdbc(code: int, text: str) -> bool:
         """证明 AutoCloseable 已绕过：类被实例化/构造（非 autoType 黑名单拒绝）。"""
@@ -295,7 +296,7 @@ def main() -> int:
         return any(g.lower() in text.lower() for g in good)
 
     run_case(
-        "mysql_jdbc_51",
+        "mysql_jdbc",
         build_mysql_jdbc_51("127.0.0.1", 3308, "fj1268"),
         check_jdbc,
     )

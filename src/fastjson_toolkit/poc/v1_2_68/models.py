@@ -79,7 +79,21 @@ class Poc1268GenerateOptions(BaseModel):
     host: Optional[str] = Field(None, description="MySQL/PG host")
     port: Optional[int] = Field(None, description="MySQL/PG port")
     user: Optional[str] = Field(None, description="MySQL user")
-    jdbc_url: Optional[str] = Field(None, description="mysql_jdbc_60 完整 JDBC URL")
+    jdbc_url: Optional[str] = Field(
+        None, description="mysql_jdbc 6.0 完整 JDBC URL（可覆盖自动拼装）"
+    )
+    mysql_version: Optional[str] = Field(
+        "5.1",
+        description="mysql_jdbc 驱动版本：5.1 / 6.0 / 8.0",
+    )
+    outbound: bool = Field(
+        True,
+        description="mysql_jdbc：true=出网连恶意 MySQL；false=NamedPipe 不出网",
+    )
+    named_pipe_path: Optional[str] = Field(
+        "/tmp/mysql.pcap",
+        description="mysql_jdbc 不出网时的 NamedPipe / path",
+    )
     socket_factory_arg: Optional[str] = Field(
         None, description="postgresql_ssrf ClassPathXml URL"
     )

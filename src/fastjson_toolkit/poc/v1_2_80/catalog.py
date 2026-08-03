@@ -87,17 +87,21 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="mysql_jdbc",
-        title="MySQL 链缓存 + 写文件 RCE",
+        title="MySQL JDBC RCE（出网 / NamedPipe 不出网）",
         description=(
-            "jackson 缓存后经 CompressedInputStream 走 MySQL 类路径，"
-            "再用 commons-io LazyFileOutputStream 写 marker 证明 RCE。"
+            "jackson 缓存 InputStream 后 CompressedInputStream→JDBC4Connection；"
+            "出网连恶意 MySQL（autoDeserialize）；不出网需先写 Pipe 再 NamedPipeSocketFactory。"
+            "适用 mysql-connector ≤5.1.48。"
         ),
-        requires=("jackson-core", "mysql-connector-java ≤5.1.48", "commons-io", "ant"),
+        requires=("jackson-core", "mysql-connector-java ≤5.1.48"),
         jdk="8+",
-        input_fields=("file", "content"),
-        steps=4,
+        input_fields=("outbound", "host", "port", "user", "named_pipe_path"),
+        steps=3,
         marker_file="/tmp/fj1280_mysql_jdbc",
         marker_content="FJ1280_MYSQL_JDBC",
+        references=(
+            "https://1diot9.github.io/2025/05/05/mysql-JDBC-%E7%BB%95%E8%BF%87/",
+        ),
     ),
     GadgetEntry(
         id="groovy",

