@@ -32,7 +32,7 @@ class GadgetEntry:
 GADGETS: tuple[GadgetEntry, ...] = (
     GadgetEntry(
         id="jdbc_rowset",
-        title="JdbcRowSetImpl (JNDI)",
+        title="JdbcRowSetImpl (JNDI) RCE",
         description=(
             "Class 缓存预热 com.sun.rowset.JdbcRowSetImpl 后触发 dataSourceName JNDI。"
             "经典出网链；JDK8u191+ 需高版本 LDAP/本地工厂等额外条件。"
@@ -47,7 +47,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="bcel_tomcat_dbcp",
-        title="BCEL + tomcat-dbcp",
+        title="BCEL + tomcat-dbcp RCE",
         description="org.apache.tomcat.dbcp.dbcp.BasicDataSource + BCEL ClassLoader；$ref 触发 connection。",
         requires=(
             "tomcat-dbcp <= 7.0.109",
@@ -58,7 +58,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="bcel_tomcat_dbcp2",
-        title="BCEL + tomcat-dbcp2",
+        title="BCEL + tomcat-dbcp2 RCE",
         description="org.apache.tomcat.dbcp.dbcp2.BasicDataSource + BCEL ClassLoader。",
         requires=(
             "tomcat-dbcp 8.0.0-RC1 .. 10.1.0-M2",
@@ -69,7 +69,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="bcel_commons_dbcp",
-        title="BCEL + commons-dbcp",
+        title="BCEL + commons-dbcp RCE",
         description="org.apache.commons.dbcp.BasicDataSource + BCEL ClassLoader。",
         requires=("commons-dbcp <= 1.4", "BCEL ClassLoader"),
         jdk="<= 8u251",
@@ -77,7 +77,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="bcel_commons_dbcp2",
-        title="BCEL + commons-dbcp2",
+        title="BCEL + commons-dbcp2 RCE",
         description="org.apache.commons.dbcp2.BasicDataSource + BCEL ClassLoader。",
         requires=("commons-dbcp2 <= 2.13.0", "BCEL ClassLoader"),
         jdk="<= 8u251",
@@ -85,7 +85,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="c3p0_wrapper",
-        title="C3P0 WrapperConnectionPoolDataSource",
+        title="C3P0 WrapperConnectionPoolDataSource RCE",
         description=(
             "userOverridesAsString=HexAsciiSerializedMap:...; 二次反序列化。"
             "可配合 CommonsCollections 等本地 gadget 做出网/回显。"
@@ -97,7 +97,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="mybatis_bcel",
-        title="MyBatis UnpooledDataSource (BCEL)",
+        title="MyBatis UnpooledDataSource (BCEL) RCE",
         description=(
             "org.apache.ibatis.datasource.unpooled.UnpooledDataSource；"
             "默认 $ref 触发 getConnection；getter_trigger=json_key 为 JSONObject 作 Map key 形态。"
@@ -112,7 +112,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="h2_jdbc",
-        title="H2 JdbcDataSource (INIT/ALIAS)",
+        title="H2 JdbcDataSource (INIT/ALIAS) RCE",
         description=(
             "org.h2.jdbcx.JdbcDataSource；INIT 中 CREATE ALIAS + Base64 defineClass。"
             "默认 $ref 触发 connection；getter_trigger=json_key/currency* 可换 Map key / Currency 套层。"

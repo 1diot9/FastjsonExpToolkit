@@ -346,7 +346,7 @@ function Poc16723Panel() {
 
       <div className="min-w-0 space-y-4">
         <Alert>
-          <AlertTitle>复现注意</AlertTitle>
+          <AlertTitle>CVE-2026-16723 RCE</AlertTitle>
           <AlertDescription className="space-y-1 text-sm">
             <p>
               1. 先启动靶场：
@@ -721,7 +721,7 @@ function Poc1247Panel() {
 
       <div className="min-w-0 space-y-4">
         <Alert>
-          <AlertTitle>1.2.47 缓存绕过</AlertTitle>
+          <AlertTitle>1.2.47 缓存绕过 RCE</AlertTitle>
           <AlertDescription className="space-y-1 text-sm">
             <p>
               <code>java.lang.Class</code> → MiscCodec →{" "}
@@ -1543,7 +1543,7 @@ export default function PocPage() {
           <TabsTrigger value="1247">≤1.2.47 缓存绕过</TabsTrigger>
           <TabsTrigger value="1268">≤1.2.68 AutoCloseable</TabsTrigger>
           <TabsTrigger value="1280">≤1.2.80 Exception</TabsTrigger>
-          <TabsTrigger value="16723">1.2.83 CVE-2026-16723</TabsTrigger>
+          <TabsTrigger value="16723">1.2.83 CVE-2026-16723 RCE</TabsTrigger>
         </TabsList>
         <TabsContent value="1247" className="mt-6">
           <Poc1247Panel />

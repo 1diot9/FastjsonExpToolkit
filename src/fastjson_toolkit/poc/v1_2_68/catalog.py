@@ -61,7 +61,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="jdk11_write",
-        title="JDK11 MarshalOutputStream 任意写",
+        title="JDK11 MarshalOutputStream 任意写 RCE",
         description=(
             "MarshalOutputStream → InflaterOutputStream → FileOutputStream；"
             "Inflater.input 使用 array/limit（JDK11 形态）。内容为 zlib 压缩后 Base64。"
@@ -75,7 +75,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="file_copy",
-        title="SafeFileOutputStream 文件复制",
+        title="SafeFileOutputStream 文件复制 RCE",
         description="aspectjtools SafeFileOutputStream(tempPath→targetPath)。",
         requires=("org.aspectj:aspectjtools",),
         jdk="8+",
@@ -84,7 +84,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="io_final",
-        title="commons-io 写文件（推荐）",
+        title="commons-io 写文件 RCE（推荐）",
         description=(
             "最通用 io 写链：BOMInputStream + TeeInputStream + CharSequenceInputStream，"
             "$ref $.bOM 触发 getBOM 落盘。默认仅依赖 commons-io；"
@@ -101,7 +101,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     # --- 以下 io 写变体默认隐藏，CLI/API 仍可按 id 生成 ---
     GadgetEntry(
         id="io1_write",
-        title="commons-io io1 写文件",
+        title="commons-io io1 写文件 RCE",
         description=(
             "笔记 io1 数据流；证明态与 io_final 同构（LazyFile）。"
             "经典 XmlStreamReader/FileWriterWithEncoding+WriterOutputStream 受构造随机影响。"
@@ -117,7 +117,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="io2_write",
-        title="commons-io io2 写文件 (2.7–2.8)",
+        title="commons-io io2 写文件 RCE (2.7–2.8)",
         description="同 io1，参数改为 inputStream / charsetName；内容建议 ≥8192。",
         requires=("commons-io 2.7–2.8.0",),
         jdk="8+",
@@ -126,7 +126,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="io3_write",
-        title="commons-io io3 写文件 (su18)",
+        title="commons-io io3 写文件 RCE (su18)",
         description="BOMInputStream.getBOM + TeeInputStream + Currency/$ref 触发（su18）。",
         requires=("commons-io",),
         jdk="8+",
@@ -136,7 +136,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="io4_write",
-        title="io4 Base64 二进制写 (aspectj)",
+        title="io4 Base64 二进制写 RCE (aspectj)",
         description="Base64InputStream + CharSequenceInputStream + SafeFileOutputStream；$ref bOM。",
         requires=("commons-io≥2.2", "commons-codec", "aspectjtools"),
         jdk="8+",
@@ -146,7 +146,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="io5_write",
-        title="io5 LazyFileOutputStream (ant)",
+        title="io5 LazyFileOutputStream RCE (ant)",
         description="io4 换 ant LazyFileOutputStream；可写任意大小；LockableFileWriter 可建目录。",
         requires=("commons-io", "commons-codec", "ant"),
         jdk="8+",
@@ -177,7 +177,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="mysql_jdbc_51",
-        title="MySQL JDBC 5.1.x 出网",
+        title="MySQL JDBC 5.1.x 出网 RCE",
         description="JDBC4Connection + ServerStatusDiffInterceptor + autoDeserialize。",
         requires=("mysql-connector-java 5.1.1–5.1.48",),
         jdk="8+",
@@ -185,7 +185,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="mysql_jdbc_60",
-        title="MySQL JDBC 6.0.2/6.0.3 出网",
+        title="MySQL JDBC 6.0.2/6.0.3 出网 RCE",
         description="LoadBalancedMySQLConnection + connectionString url。",
         requires=("mysql-connector-java 6.0.2/6.0.3",),
         jdk="8+",
@@ -193,7 +193,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="mysql_jdbc_80",
-        title="MySQL JDBC ≤8.0.19 出网",
+        title="MySQL JDBC ≤8.0.19 出网 RCE",
         description="ReplicationMySQLConnection + LoadBalancedConnectionProxy。",
         requires=("mysql-connector-java ≤8.0.19",),
         jdk="8+",
@@ -201,7 +201,7 @@ GADGETS: tuple[GadgetEntry, ...] = (
     ),
     GadgetEntry(
         id="postgresql_ssrf",
-        title="PostgreSQL socketFactory SSRF",
+        title="PostgreSQL socketFactory SSRF RCE",
         description=(
             "PgConnection.info.socketFactory=ClassPathXmlApplicationContext；"
             "可 file/http 加载 XML（需 Spring）。"
