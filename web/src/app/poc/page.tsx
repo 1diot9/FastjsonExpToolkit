@@ -222,8 +222,8 @@ function Poc16723Panel() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <Card>
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <Card className="min-w-0 lg:sticky lg:top-4">
         <CardHeader>
           <CardTitle>运行参数</CardTitle>
           <CardDescription>
@@ -344,7 +344,7 @@ function Poc16723Panel() {
         </CardContent>
       </Card>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <Alert>
           <AlertTitle>复现注意</AlertTitle>
           <AlertDescription className="space-y-1 text-sm">
@@ -476,8 +476,8 @@ function Poc1247Panel() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <Card>
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <Card className="min-w-0 lg:sticky lg:top-4">
         <CardHeader>
           <CardTitle>生成参数</CardTitle>
           <CardDescription>
@@ -719,7 +719,7 @@ function Poc1247Panel() {
         </CardContent>
       </Card>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <Alert>
           <AlertTitle>1.2.47 缓存绕过</AlertTitle>
           <AlertDescription className="space-y-1 text-sm">
@@ -890,8 +890,8 @@ function Poc1268Panel() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <Card>
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <Card className="min-w-0 lg:sticky lg:top-4">
         <CardHeader>
           <CardTitle>生成参数</CardTitle>
           <CardDescription>
@@ -1082,7 +1082,7 @@ function Poc1268Panel() {
         </CardContent>
       </Card>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <Alert>
           <AlertTitle>1.2.68 AutoCloseable</AlertTitle>
           <AlertDescription className="space-y-1 text-sm">
@@ -1092,7 +1092,7 @@ function Poc1268Panel() {
               checkAutoType（1.2.69 起进黑名单）。
             </p>
             <p>
-              验证：<code>python scripts/lab_test_1268_gadgets.py</code>
+              验证：<code>python tests/lab/lab_test_1268_gadgets.py</code>
             </p>
             {current ? (
               <p>
@@ -1245,8 +1245,8 @@ function Poc1280Panel() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <Card>
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <Card className="min-w-0 lg:sticky lg:top-4">
         <CardHeader>
           <CardTitle>生成参数</CardTitle>
           <CardDescription>
@@ -1439,7 +1439,7 @@ function Poc1280Panel() {
         </CardContent>
       </Card>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <Alert>
           <AlertTitle>1.2.80 RCE（写文件证明）</AlertTitle>
           <AlertDescription className="space-y-1 text-sm">
@@ -1449,7 +1449,7 @@ function Poc1280Panel() {
               aspectj 等落盘。
             </p>
             <p>
-              验证：<code>python scripts/lab_test_1280_gadgets.py</code>
+              验证：<code>python tests/lab/lab_test_1280_gadgets.py</code>
             </p>
             {current ? (
               <p>
@@ -1526,7 +1526,7 @@ function Poc1280Panel() {
 
 export default function PocPage() {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-8">
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-8">
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">PoC</h1>
