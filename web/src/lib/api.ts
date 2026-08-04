@@ -120,11 +120,13 @@ export type McpHttpStartRequest = {
   persist?: boolean;
 };
 
-/** Same-origin proxy first; fall back to direct backend for local dev. */
+/** Same-origin proxy first; fall back to configured / default backend. */
+const PUBLIC_API_BASE = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "";
 const API_CANDIDATES = [
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "",
-  "http://127.0.0.1:8000",
-  "http://localhost:8000",
+  "", // Next.js rewrite → API_ORIGIN
+  PUBLIC_API_BASE,
+  // Only when start script did not pin a backend port.
+  ...(PUBLIC_API_BASE ? [] : ["http://127.0.0.1:8000", "http://localhost:8000"]),
 ].filter((v, i, arr) => arr.indexOf(v) === i);
 
 async function readError(res: Response): Promise<string> {
@@ -160,9 +162,10 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     }
   }
 
+  const hint = PUBLIC_API_BASE || "代理与 127.0.0.1:8000";
   throw lastError instanceof Error
     ? lastError
-    : new Error("无法连接后端 API（已尝试代理与 127.0.0.1:8000）");
+    : new Error(`无法连接后端 API（已尝试 ${hint}）`);
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {

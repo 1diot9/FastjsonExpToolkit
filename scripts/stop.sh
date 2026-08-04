@@ -7,8 +7,26 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUNTIME="$ROOT/.runtime"
 PID_BACKEND="$RUNTIME/backend.pid"
 PID_FRONTEND="$RUNTIME/frontend.pid"
-BACKEND_PORT="${BACKEND_PORT:-8000}"
-FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+PORTS_FILE="$RUNTIME/ports.env"
+
+# Prefer explicit env, then last start ports, then defaults.
+_env_backend="${BACKEND_PORT-}"
+_env_frontend="${FRONTEND_PORT-}"
+BACKEND_PORT=8000
+FRONTEND_PORT=3000
+if [[ -f "$PORTS_FILE" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    case "$key" in
+      BACKEND_PORT) BACKEND_PORT="$val" ;;
+      FRONTEND_PORT) FRONTEND_PORT="$val" ;;
+    esac
+  done <"$PORTS_FILE"
+fi
+[[ -n "$_env_backend" ]] && BACKEND_PORT="$_env_backend"
+[[ -n "$_env_frontend" ]] && FRONTEND_PORT="$_env_frontend"
 
 kill_tree() {
   local pid="$1"
@@ -66,7 +84,11 @@ kill_port() {
 
 kill_pid_file "frontend" "$PID_FRONTEND"
 kill_pid_file "backend" "$PID_BACKEND"
-kill_port "$FRONTEND_PORT"
-kill_port "$BACKEND_PORT"
+# Only free ports we recorded on start — avoid killing unrelated apps on :8000/:3000.
+if [[ -f "$PORTS_FILE" ]]; then
+  kill_port "$FRONTEND_PORT"
+  kill_port "$BACKEND_PORT"
+  rm -f "$PORTS_FILE"
+fi
 
 echo "[+] stopped (Docker lab untouched)"

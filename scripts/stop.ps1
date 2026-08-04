@@ -11,8 +11,25 @@ $Root = Split-Path -Parent $ScriptDir
 $Runtime = Join-Path $Root ".runtime"
 $PidBackend = Join-Path $Runtime "backend.pid"
 $PidFrontend = Join-Path $Runtime "frontend.pid"
-$BackendPort = if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { 8000 }
-$FrontendPort = if ($env:FRONTEND_PORT) { [int]$env:FRONTEND_PORT } else { 3000 }
+$PortsFile = Join-Path $Runtime "ports.env"
+
+# Prefer explicit env, then last start ports, then defaults.
+$BackendPort = 8000
+$FrontendPort = 3000
+if (Test-Path $PortsFile) {
+    Get-Content $PortsFile | ForEach-Object {
+        $line = $_.Trim()
+        if (-not $line -or $line.StartsWith("#")) { return }
+        $parts = $line.Split("=", 2)
+        if ($parts.Count -ne 2) { return }
+        switch ($parts[0]) {
+            "BACKEND_PORT" { $BackendPort = [int]$parts[1] }
+            "FRONTEND_PORT" { $FrontendPort = [int]$parts[1] }
+        }
+    }
+}
+if ($env:BACKEND_PORT) { $BackendPort = [int]$env:BACKEND_PORT }
+if ($env:FRONTEND_PORT) { $FrontendPort = [int]$env:FRONTEND_PORT }
 
 function Stop-PidTree([int]$ProcId) {
     # Kill children first (uvicorn --reload spawns a worker).
@@ -50,8 +67,12 @@ function Stop-PortListeners([int]$Port) {
 
 Stop-PidFile "frontend" $PidFrontend
 Stop-PidFile "backend" $PidBackend
-Stop-PortListeners $FrontendPort
-Stop-PortListeners $BackendPort
+# Only free ports we recorded on start — avoid killing unrelated apps on :8000/:3000.
+if (Test-Path $PortsFile) {
+    Stop-PortListeners $FrontendPort
+    Stop-PortListeners $BackendPort
+    Remove-Item $PortsFile -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "[+] stopped (Docker lab untouched)"
 

