@@ -22,11 +22,11 @@ cd web && npm install && cd ..
 
 | 服务 | 地址 |
 |------|------|
-| 前端 | http://127.0.0.1:3000 |
-| 后端 API | http://127.0.0.1:8000（占用时自动换端口） |
-| API 文档 | http://127.0.0.1:3000/api/docs |
+| 前端 | http://127.0.0.1:3000（占用时提示手动指定） |
+| 后端 API | http://127.0.0.1:8000（占用时提示手动指定；会写入 `web/.env.local` 供前端反代） |
+| API 文档 | 同前端 `/api/docs`（经 Next 反代） |
 
-日志：`.runtime/logs/`。关闭后端热更新：`scripts\start.ps1 -NoReload` 或 `BACKEND_RELOAD=0`。
+日志：`.runtime/logs/`。关闭后端热更新：`scripts\start.ps1 -NoReload` 或 `BACKEND_RELOAD=0`。非交互环境可预设：`BACKEND_PORT=8001 FRONTEND_PORT=3001 ./scripts/start.sh`。
 
 ### CEYE DNSLog（可选）
 

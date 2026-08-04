@@ -479,8 +479,10 @@ export default function DetectPage() {
           <AlertTitle>后端不可用</AlertTitle>
           <AlertDescription>
             {healthError}。请先执行{" "}
-            <code className="rounded bg-muted px-1">fjtoolkit serve</code>（默认
-            :8000）。
+            <code className="rounded bg-muted px-1">./scripts/start.sh</code>{" "}
+            或{" "}
+            <code className="rounded bg-muted px-1">fjtoolkit serve</code>
+            （端口占用时会自动换口，见启动输出）。
           </AlertDescription>
         </Alert>
       ) : null}
