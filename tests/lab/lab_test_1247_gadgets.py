@@ -23,7 +23,7 @@ from fastjson_toolkit.poc.v1_2_47.payloads import (
     build_mybatis_bcel,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LAB = ROOT / "lab" / "fastjson-1247-lab"
 PROOF = ROOT / "tmp_lab" / "1247_proof"
 BASE = "http://127.0.0.1:18247"

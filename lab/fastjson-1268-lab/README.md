@@ -23,7 +23,7 @@ curl http://127.0.0.1:18268/api/health
 仓库根目录：
 
 ```bash
-python scripts/lab_test_1268_gadgets.py
+python tests/lab/lab_test_1268_gadgets.py
 ```
 
 ## 约束

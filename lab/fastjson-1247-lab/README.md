@@ -23,7 +23,7 @@ curl http://127.0.0.1:18247/api/health
 仓库根目录：
 
 ```bash
-python scripts/lab_test_1247_gadgets.py
+python tests/lab/lab_test_1247_gadgets.py
 ```
 
 覆盖：JdbcRowSet、BCEL×4（tomcat/commons dbcp/dbcp2）、MyBatis、C3P0、H2（Class.forName + defineClass）。
