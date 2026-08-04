@@ -43,11 +43,182 @@ from fastjson_toolkit.waf import WafOptions, list_techniques
 
 PocFamily = Literal["1.2.47", "1.2.68", "1.2.80", "cve-2026-16723"]
 
+# MCP 面向 Agent：只保留决策字段，去掉 Web/调试用的冗长细节。
+_DETECT_KEEP = (
+    "target",
+    "is_fastjson",
+    "confidence",
+    "primary_guess",
+    "autotype_disabled_hint",
+    "dns_confirmed",
+    "dns_timing_suspicious",
+    "summary",
+)
+_VERSION_KEEP = (
+    "autotype_enabled",
+    "safemode_enabled",
+    "version_range",
+    "version_detail",
+    "is_1_2_83_hint",
+    "confidence",
+    "summary",
+)
+_EXPECT_KEEP = (
+    "has_expect_class",
+    "expect_not_map",
+    "version_lt_1_2_68_hint",
+    "confidence",
+    "summary",
+)
+_HEALTH_KEEP = ("fastjson", "version", "autotype", "safemode", "deps", "endpoints")
+_POC_DROP = frozenset(
+    {
+        "notes",
+        "raw",
+        "title",
+        "jdk",
+        "payload_raw",
+        "attack_jar_b64",
+        "attack_xml_b64",
+        "class_b64",
+        "bcel_code",
+        "preset",
+    }
+)
+_POC_DROP_IF_FALSE = frozenset(
+    {
+        "echo",
+        "memshell",
+        "wrap_currency",
+        "sent",
+    }
+)
+
 
 def _dump(model: BaseModel | None) -> dict[str, Any] | None:
     if model is None:
         return None
     return model.model_dump(mode="json")
+
+
+def _pick(data: dict[str, Any] | None, keys: tuple[str, ...]) -> dict[str, Any] | None:
+    if not data:
+        return None
+    out: dict[str, Any] = {}
+    for key in keys:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        out[key] = value
+    return out or None
+
+
+def _omit_empty(data: dict[str, Any]) -> dict[str, Any]:
+    """去掉 null / 空串 / 空容器；保留 False / 0（布尔与状态码有语义）。"""
+    out: dict[str, Any] = {}
+    for key, value in data.items():
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        if isinstance(value, dict):
+            nested = _omit_empty(value)
+            if nested:
+                out[key] = nested
+            continue
+        out[key] = value
+    return out
+
+
+def _slim_detect(data: dict[str, Any] | None) -> dict[str, Any] | None:
+    picked = _pick(data, _DETECT_KEEP)
+    if not picked or data is None:
+        return picked
+    scores = data.get("scores")
+    if isinstance(scores, dict) and scores:
+        # 只留非零分，避免一长串 0
+        slim_scores = {k: v for k, v in scores.items() if v}
+        if slim_scores:
+            picked["scores"] = slim_scores
+    return picked
+
+
+def _slim_health(health: dict[str, Any] | None) -> dict[str, Any] | None:
+    return _pick(health, _HEALTH_KEEP)
+
+
+def _slim_deps_result(data: dict[str, Any]) -> dict[str, Any]:
+    present = [
+        {
+            "clazz": h.get("clazz"),
+            "description": h.get("description"),
+            "category": h.get("category"),
+        }
+        for h in (data.get("present") or [])
+        if isinstance(h, dict)
+    ]
+    out: dict[str, Any] = {
+        "target": data.get("target"),
+        "method": data.get("method"),
+        "scanned": data.get("scanned"),
+        "present_count": data.get("present_count"),
+        "absent_count": data.get("absent_count"),
+        "summary": data.get("summary"),
+        "present": present,
+    }
+    notes = data.get("notes") or []
+    # 校准 / 能力提示有用；整表扫描细节不需要
+    useful_notes = [
+        n
+        for n in notes
+        if isinstance(n, str)
+        and any(
+            tip in n
+            for tip in (
+                "校准",
+                "降级",
+                "Class",
+                "Character",
+                "CEYE",
+                "DNS",
+                "AutoType",
+                "未配置",
+            )
+        )
+    ]
+    if useful_notes:
+        out["notes"] = useful_notes[:5]
+    return _omit_empty(out)
+
+
+def _slim_gadget(entry: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {"id": entry.get("id")}
+    if entry.get("title"):
+        out["title"] = entry["title"]
+    if entry.get("requires"):
+        out["requires"] = entry["requires"]
+    if entry.get("input_fields"):
+        out["input_fields"] = entry["input_fields"]
+    if entry.get("modes"):
+        out["modes"] = entry["modes"]
+    return out
+
+
+def _slim_poc_result(data: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in data.items():
+        if key in _POC_DROP:
+            continue
+        if key in _POC_DROP_IF_FALSE and not value:
+            continue
+        if key in {"engine", "cmd_header", "getter_trigger", "waf_techniques"} and not value:
+            continue
+        if key == "response_preview" and not value:
+            continue
+        if value is None or value == [] or value == {}:
+            continue
+        out[key] = value
+    return out
 
 
 def _ceye_from_env(*, enabled: bool = True) -> CeyeConfig | None:
@@ -167,17 +338,16 @@ def detect_pipeline(
             next_actions.append("docs_list")
         out_nf: dict[str, Any] = {
             "ok": True,
-            "detect": _dump(detect_result),
-            "version": None,
-            "expect": None,
+            "detect": _slim_detect(_dump(detect_result)),
             "skipped": skipped,
             "next_actions": next_actions,
             "effective_target": effective_target,
             "summary": detect_result.summary
             or "未判定为 Fastjson，已跳过版本与期望类探测",
         }
-        if health:
-            out_nf["health"] = health
+        slim_health = _slim_health(health if isinstance(health, dict) else None)
+        if slim_health:
+            out_nf["health"] = slim_health
             out_nf["summary"] += "；已附带 /api/health 信息（若有）"
         return out_nf
 
@@ -269,9 +439,9 @@ def detect_pipeline(
 
     out: dict[str, Any] = {
         "ok": True,
-        "detect": _dump(detect_result),
-        "version": _dump(version_result),
-        "expect": _dump(expect_result),
+        "detect": _slim_detect(_dump(detect_result)),
+        "version": _pick(_dump(version_result), _VERSION_KEEP),
+        "expect": _pick(_dump(expect_result), _EXPECT_KEEP),
         "skipped": skipped,
         "next_actions": next_actions + capability_notes,
         "effective_target": effective_target,
@@ -286,8 +456,9 @@ def detect_pipeline(
             if part
         ),
     }
-    if health:
-        out["health"] = health
+    slim_health = _slim_health(health if isinstance(health, dict) else None)
+    if slim_health:
+        out["health"] = slim_health
     if version_error:
         out["version_error"] = version_error
     if expect_error:
@@ -357,7 +528,7 @@ def deps_probe(
     finally:
         detector.close()
 
-    return {"ok": True, "result": _dump(result)}
+    return {"ok": True, "result": _slim_deps_result(_dump(result) or {})}
 
 
 def deps_catalog() -> dict[str, Any]:
@@ -400,30 +571,27 @@ def poc_catalog(family: Optional[PocFamily] = None) -> dict[str, Any]:
             return _err(f"未知 family: {family}", families=list(families))
         families = {family: families[family]}
 
+    slim_gadgets = {
+        name: [_slim_gadget(g) for g in gadgets if not g.get("hidden")]
+        for name, gadgets in families.items()
+    }
+
     return {
         "ok": True,
-        "gadgets": families,
-        "echo_engines": list_engines(),
-        "waf_techniques": [
-            {
-                "id": t.id,
-                "title": t.title,
-                "description": t.description,
-            }
-            for t in list_techniques()
+        "gadgets": slim_gadgets,
+        "echo_engines": [
+            {"id": e["id"], "title": e.get("title") or e["id"]}
+            for e in list_engines()
         ],
+        "waf_techniques": [{"id": t.id, "title": t.title} for t in list_techniques()],
         "expect_bypass_hint": {
             "1.2.47": "expect_bypass=true → getter_trigger=currency",
             "1.2.68": "expect_bypass=true → wrap_currency=true",
             "1.2.80": "expect_bypass=true → wrap_currency=true",
-            "cve-2026-16723": "无独立期望类绕过开关",
         },
         "script_hint": (
-            "需要按环境改逻辑时用 poc_script(family, gadget) 取固定原脚本，由 LLM 自行修改；"
-            "当前主要收录 1.2.68/io_read_error（可改 ERROR_MARKERS / MATCH_BOM；"
-            "本仓库靶场命中多为 200+bOM）。"
-            "自动化爆破优先 poc_run(family=1.2.68, send=true, "
-            "options={gadget:io_read_error, url, read_length})。"
+            "复杂逻辑改参用 poc_script；自动化爆破优先 "
+            "poc_run(family=1.2.68, send=true, options={gadget:io_read_error, url, read_length})"
         ),
     }
 
@@ -578,7 +746,7 @@ def _run_1247(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[
             content_type=req.content_type,
         )
     )
-    return {"ok": True, "family": "1.2.47", "result": _dump(result)}
+    return {"ok": True, "family": "1.2.47", "result": _slim_poc_result(_dump(result) or {})}
 
 
 def _run_1268(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[str, Any]:
@@ -636,16 +804,19 @@ def _run_1268(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[
             content_type=req.content_type,
         )
     )
-    dumped = _dump(result) or {}
+    dumped = _slim_poc_result(_dump(result) or {})
     out: dict[str, Any] = {"ok": True, "family": "1.2.68", "result": dumped}
     requires = list(getattr(entry, "requires", ()) or [])
-    if requires:
-        out["requires"] = requires
-        if req.send and dumped.get("status_code", 0) and int(dumped.get("status_code") or 0) >= 400:
-            out["capability_hint"] = (
-                f"gadget 需要 {requires}；若 deps_probe/health 显示缺失，"
-                "请换 JDK 链或具备该依赖的实例（如 18268 而非 18068）"
-            )
+    if (
+        requires
+        and req.send
+        and dumped.get("status_code", 0)
+        and int(dumped.get("status_code") or 0) >= 400
+    ):
+        out["capability_hint"] = (
+            f"gadget 需要 {requires}；若 deps_probe/health 显示缺失，"
+            "请换 JDK 链或具备该依赖的实例（如 18268 而非 18068）"
+        )
     if req.gadget == "io_read_error" and req.send and not req.read_length:
         out["hint"] = (
             "未传 options.read_length：仅发送单次探针。"
@@ -704,7 +875,7 @@ def _run_1280(*, send: bool, expect_bypass: bool, opts: dict[str, Any]) -> dict[
             content_type=req.content_type,
         )
     )
-    return {"ok": True, "family": "1.2.80", "result": _dump(result)}
+    return {"ok": True, "family": "1.2.80", "result": _slim_poc_result(_dump(result) or {})}
 
 
 def _run_16723(*, opts: dict[str, Any]) -> dict[str, Any]:
@@ -732,7 +903,7 @@ def _run_16723(*, opts: dict[str, Any]) -> dict[str, Any]:
             ms_jdk=req.ms_jdk,
         )
     )
-    return {"ok": True, "family": "cve-2026-16723", "result": _dump(result)}
+    return {"ok": True, "family": "cve-2026-16723", "result": _slim_poc_result(_dump(result) or {})}
 
 
 # ---------------------------------------------------------------------------

