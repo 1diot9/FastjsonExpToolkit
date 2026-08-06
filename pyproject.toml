@@ -34,6 +34,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 # tests/lab/ 为手动靶场脚本，命名已避开 test_*.py；显式排除以免误收集
 norecursedirs = ["lab", ".*", "build", "dist", "*.egg"]
