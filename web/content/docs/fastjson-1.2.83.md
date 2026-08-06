@@ -1,12 +1,12 @@
 ---
 title: 1.2.83 利用技巧
-description: Fastjson 1.2.83 新洞分析：写文件 + @JSONType 绕过、CVE-2026-16723 jar:http / jar:file 协议加载
+description: Fastjson 1.2.83 写文件 + @JSONType；CVE-2026-16723（1.2.68–1.2.83）jar:http / jar:file 协议加载
 order: 0
 ---
 
 # 1.2.83 利用技巧
 
-本文分析 Fastjson **1.2.83** 近期相关利用思路：配合写文件与 `@JSONType` 绕过白名单，以及 CVE-2026-16723 通过 `jar:http` / `jar:file` 等协议加载恶意类。供安全研究与本地复现参考。
+本文分析 Fastjson **1.2.83** 相关利用思路：配合写文件与 `@JSONType` 绕过白名单；以及 **CVE-2026-16723**（影响 **1.2.68–1.2.83**，不仅限于 1.2.83）通过 `jar:http` / `jar:file` 等协议加载恶意类。供安全研究与本地复现参考。
 
 相关阅读：
 
@@ -30,6 +30,8 @@ order: 0
 ---
 
 ## 2. CVE-2026-16723：`jar:http` / `jar:file` 加载
+
+> **版本范围**：官方公告为 Fastjson **1.2.68–1.2.83**（已修复于 1.2.84），**不是**仅 1.2.83 可打。本文放在 1.2.83 文档下是因为本仓库证明靶场用 1.2.83；前置条件是 Spring Boot **fat-jar**（`LaunchedURLClassLoader`）+ 默认配置（AutoType 关、SafeMode 关），而非「必须探测到 1.2.83」。
 
 ### 2.1 根因
 
@@ -247,7 +249,7 @@ http://3232235777/  = http://192.168.1.1
 | 点 | 结论 |
 |----|------|
 | `@JSONType` | 可绕过 1.2.83 `@type` 白名单；配合写文件仍可能 getshell |
-| CVE-2026-16723 | 依赖能解析 `jar`/`http` 等协议的 ClassLoader（典型为 fat jar 下的 `LaunchedURLClassLoader`） |
+| CVE-2026-16723 | **1.2.68–1.2.83**；约束在 fat-jar ClassLoader（`LaunchedURLClassLoader`），非「仅 1.2.83」 |
 | `jar:http` | Undertow 更易成功；内嵌 Tomcat 常因 `forName0` 拒绝双斜杠失败；JDK 11+ `defineClass` 也更严 |
 | `jar:file` | 无连续斜杠，Tomcat / Undertow 均可尝试；需结合上传或 fd 缓存 |
 | 复现 | 必须用 jar 启动，勿直接在 IDEA 跑 |

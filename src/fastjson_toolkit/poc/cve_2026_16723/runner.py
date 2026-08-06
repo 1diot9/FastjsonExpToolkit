@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""CVE-2026-16723 PoC: jar:http 出网 / fd 缓存不出网 + 命令执行/回显/内存马。"""
+"""CVE-2026-16723 PoC: jar:http 出网 / fd 缓存不出网 + 命令执行/回显/内存马。
+
+影响 Fastjson 1.2.68–1.2.83（不仅限于 1.2.83）；前置为 Spring Boot fat-jar ClassLoader。
+"""
 
 from __future__ import annotations
 

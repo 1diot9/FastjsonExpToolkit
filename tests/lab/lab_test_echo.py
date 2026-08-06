@@ -150,7 +150,7 @@ def test_16723(port: int = 18083) -> bool:
     joined = "\n".join(r.logs)
     has_echo = ("uid=" in joined) or ("echo output" in joined.lower())
     return _ok(
-        "1.2.83 CVE-16723 undertow",
+        "CVE-16723 undertow",
         bool(r.ok and has_echo),
         f"ok={r.ok} summary={r.summary}",
     )

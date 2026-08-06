@@ -69,10 +69,10 @@ export default function Home() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bomb className="size-5" />
-              1.2.83 PoC
+              PoC
             </CardTitle>
             <CardDescription>
-              ≤1.2.47 缓存绕过、≤1.2.68 AutoCloseable、1.2.83 CVE-2026-16723。
+              ≤1.2.47 / ≤1.2.68 / ≤1.2.80，以及 CVE-2026-16723（1.2.68–1.2.83）。
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -894,7 +894,7 @@ def poc_16723_cmd(
     ms_jdk: str = typer.Option("8", "--ms-jdk"),
     json_out: bool = typer.Option(False, "--json", help="输出完整 JSON"),
 ) -> None:
-    """CVE-2026-16723（Fastjson 1.2.83）证明 PoC：jar:http / fd-cache。"""
+    """CVE-2026-16723（Fastjson 1.2.68–1.2.83）证明 PoC：jar:http / fd-cache。"""
     from fastjson_toolkit.poc import Poc16723Options, run_cve_2026_16723
 
     mode_norm = mode.strip().lower()

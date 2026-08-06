@@ -223,7 +223,7 @@ LABS: tuple[LabSpec, ...] = (
     LabSpec(
         id="cve-2026-16723",
         name="CVE-2026-16723",
-        description="1.2.83 jar:http / fd-cache 证明（Undertow）",
+        description="CVE-2026-16723（1.2.68–1.2.83）jar:http / fd-cache；lab 用 1.2.83 Undertow",
         category="cve",
         compose_rel="lab/cve-2026-16723",
         services=("fastjson-undertow",),

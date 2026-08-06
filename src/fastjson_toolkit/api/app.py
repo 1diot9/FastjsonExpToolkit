@@ -921,10 +921,11 @@ def create_app() -> FastAPI:
         "/api/poc/cve-2026-16723",
         response_model=Poc16723Result,
         tags=["poc"],
-        summary="CVE-2026-16723（Fastjson 1.2.83）证明 PoC",
+        summary="CVE-2026-16723（Fastjson 1.2.68–1.2.83）证明 PoC",
         description=(
-            "jar:http 出网 / fd-cache 不出网证明。需本机 javac、fastjson-1.2.83.jar，"
-            "以及可出网的攻击者 HTTP 端口。Docker 靶场：lab/cve-2026-16723。"
+            "jar:http 出网 / fd-cache 不出网证明。影响 1.2.68–1.2.83（不仅限于 1.2.83）。"
+            "需本机 javac、fastjson jar（靶场用 1.2.83），以及可出网的攻击者 HTTP 端口。"
+            "Docker 靶场：lab/cve-2026-16723。"
         ),
     )
     def poc_cve_2026_16723(req: Poc16723Request) -> Poc16723Result:

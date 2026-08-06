@@ -684,13 +684,16 @@ function Poc16723Panel() {
 
       <div className="min-w-0 space-y-4">
         <Alert>
-          <AlertTitle>CVE-2026-16723 RCE</AlertTitle>
+          <AlertTitle>CVE-2026-16723 RCE（1.2.68–1.2.83）</AlertTitle>
           <AlertDescription className="space-y-1 text-sm">
             <p>
               1. 先启动靶场：
               <code>cd lab/cve-2026-16723 &amp;&amp; docker compose up --build -d</code>
             </p>
-            <p>2. 本机需 javac + ~/.m2 中的 fastjson-1.2.83.jar</p>
+            <p>
+              2. 本机需 javac + ~/.m2 中的 fastjson jar（靶场用
+              1.2.83；CVE 范围含 1.2.68–1.2.83）
+            </p>
             <p>
               3. Docker 内访问攻击者 HTTP 用无点主机名 <code>attacker</code>
             </p>
@@ -2245,8 +2248,8 @@ export default function PocPage() {
           <Badge variant="secondary">多版本</Badge>
         </div>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          证明用 payload / 运行器：≤1.2.47、≤1.2.68、≤1.2.80，以及 1.2.83
-          CVE-2026-16723。仅授权测试与本地靶场。
+          证明用 payload / 运行器：≤1.2.47、≤1.2.68、≤1.2.80，以及
+          CVE-2026-16723（1.2.68–1.2.83，不仅限于 1.2.83）。仅授权测试与本地靶场。
         </p>
       </div>
 
@@ -2273,7 +2276,7 @@ export default function PocPage() {
           <TabsTrigger value="1247">≤1.2.47 缓存绕过</TabsTrigger>
           <TabsTrigger value="1268">≤1.2.68 AutoCloseable</TabsTrigger>
           <TabsTrigger value="1280">≤1.2.80 Exception</TabsTrigger>
-          <TabsTrigger value="16723">1.2.83 CVE-2026-16723 RCE</TabsTrigger>
+          <TabsTrigger value="16723">CVE-2026-16723 RCE</TabsTrigger>
         </TabsList>
         <TabsContent value="1247" className="mt-6">
           <Poc1247Panel {...extras} />
