@@ -1,6 +1,6 @@
 # FastjsonExpToolkit
 
-Fastjson 探测 / PoC / WAF 绕过工具箱，提供 **Web UI** 与 **MCP（Agent）** 两种入口，引擎同源。
+Fastjson 探测 / PoC / WAF 绕过工具箱，提供 **Web UI**、**MCP（Agent）** 与可迁移的 **`tools/` CLI** 入口，引擎同源。
 
 > 仅用于授权测试与本地靶场复现。密钥（如 `CEYE_TOKEN`）放在本地 `.env`，勿提交到 Git。
 
@@ -40,7 +40,22 @@ CEYE_TOKEN=your_ceye_api_token
 CEYE_DOMAIN=hpdth2.ceye.io
 ```
 
-设置页可「测试连接」。MCP 工具自动读 `.env`，**不要**在工具参数里传 token。
+设置页可「测试连接」。MCP / `tools/` CLI 自动读 `.env`，**不要**在工具参数里传 token。
+
+---
+
+## tools/ CLI（可迁移，对齐 MCP）
+
+与 MCP **同名同语义** 的轻量脚本入口，便于拷到其他项目作基础工具。不代发 exploit。
+
+```bash
+python tools/detect_pipeline.py -h
+./tools/docs_list.sh
+python tools/poc_catalog.py --family 1.2.68
+python tools/poc_get.py 1.2.68 mysql_jdbc --options '{"ldap_url":"ldap://..."}'
+```
+
+实现与迁移说明见 [`tools/README.md`](tools/README.md)。Handler 在 `tools/_lib/`，MCP 传输层复用同一套。
 
 ---
 
@@ -48,25 +63,41 @@ CEYE_DOMAIN=hpdth2.ceye.io
 
 与 REST 同源，供 Cursor 等 MCP 客户端调用。
 
+**定位**：版本 / 依赖探测 + PoC 知识库检索 + 本地 WAF 混淆。MCP **不代发** exploit（已移除 `poc_run`）；发包由 LLM / 其它工具完成。
+
 ### 工具一览
 
 | 工具 | 说明 |
 |------|------|
-| `detect_pipeline` | 识别 → 版本 → 期望类；根路径会尝试 `/api/health` 与常见反序列化点 |
-| `deps_probe` | 依赖探测（`character` 自动降级 `class` MiscCodec；可选 `dns`） |
-| `poc_catalog` | gadget / 回显引擎 / WAF 技巧目录 |
-| `poc_run` | 生成或发送 PoC（`io_read_error` + `read_length` 可逐字节爆破） |
-| `poc_script` | 取固定原脚本（LLM 按环境自行改）；不传参列目录 |
-| `docs_list` | 漏洞文档标题与摘要 |
-| `docs_get` | 按 slug 取 Markdown 正文 |
+| `detect_pipeline` | 识别 → 版本 → 期望类（精简决策字段） |
+| `deps_probe` | 依赖探测（默认全量；`character` 自动降级 `class`） |
+| `probe_catalog` | 探测探针**目录**（默认不含 payload） |
+| `probe_get` | 取单条探测探针**完整 payload** |
+| `poc_catalog` | 按版本列 gadget（id / title / requires / jdk / doc） |
+| `poc_meta` | 某 gadget 的参数元数据（`flag` / `required` / `arg_type` / `help`） |
+| `poc_get` | 成功时**直接返回** JSON payload 字符串（多步为数组） |
+| `poc_script` | 固定原脚本正文；不传参列目录 |
+| `waf_catalog` | WAF 技巧 id / title |
+| `waf_apply` | 成功时**直接返回**混淆后的 payload 字符串（variants 为数组） |
+| `docs_list` | 文档一级目录（仅 `slug` / `title`） |
+| `docs_get` | `顶级 slug`=章节目录；`顶级/章节`=**单段** Markdown |
 
-推荐工作流：`detect_pipeline` → `deps_probe` → `poc_catalog` / `poc_run`；脚本类用 `poc_script`；文档用 `docs_list` → `docs_get`。
+职责分离：目录 ≠ 正文。完整 payload → `poc_get` / `probe_get`；参数说明 → `poc_meta`；文档两级读取用 `docs_list` + `docs_get`；脚本 → `poc_script`。
+
+推荐工作流：
+
+```
+detect_pipeline → deps_probe
+  → [探测不准] probe_catalog → probe_get；docs_list → docs_get(fastjson-detect) → docs_get(fastjson-detect/…)
+  → poc_catalog(family) → poc_meta(family, gadget) → poc_get(family, gadget, options)
+  → [需要时] docs_get(章节) / poc_script / waf_apply → LLM 自行 POST
+```
 
 注意：`target` 应为反序列化 POST 点（如 `/api/fastjson`）；SafeMode 为低置信启发式并与 AutoCloseable 交叉校验；本地 `18068` 为版本矩阵（瘦依赖），`18268` 为 gadget 靶场。
 
 ### 工具输入 / 输出示例
 
-MCP 返回已对 Agent **精简**：去掉 `evidence` / `notes` / `raw` / 空字段等噪声；REST/Web 仍是完整结构。入参只需填有用的；默认值不必显式传 `null`。`ok: false` 时带 `error`。
+MCP 返回刻意精简：去掉 `evidence` / `notes` / `raw` / 长描述；目录与正文分工具。`ok: false` 时带 `error`。
 
 #### `detect_pipeline`
 
@@ -78,49 +109,25 @@ MCP 返回已对 Agent **精简**：去掉 `evidence` / `notes` / `raw` / 空字
 {
   "ok": true,
   "effective_target": "http://127.0.0.1:18268/api/fastjson",
-  "summary": "判定为 Fastjson；版本区间 <=1.2.68；存在期望类",
-  "skipped": [],
-  "next_actions": [
-    "poc_run(family=…, expect_bypass=true, target='http://127.0.0.1:18268/api/fastjson')",
-    "deps_probe(target='http://127.0.0.1:18268/api/fastjson')",
-    "poc_catalog",
-    "docs_list"
-  ],
-  "detect": {
-    "is_fastjson": true,
-    "confidence": 0.92,
-    "primary_guess": "fastjson",
-    "autotype_disabled_hint": true,
-    "summary": "判定为 Fastjson"
-  },
+  "detect": { "is_fastjson": true, "confidence": 0.92 },
   "version": {
     "autotype_enabled": false,
     "version_range": "<=1.2.68",
-    "version_detail": "1.2.48-1.2.68",
-    "summary": "版本区间 <=1.2.68"
+    "version_detail": "1.2.48-1.2.68"
   },
-  "expect": {
-    "has_expect_class": true,
-    "expect_not_map": true,
-    "summary": "存在期望类"
-  },
-  "health": {
-    "fastjson": "1.2.68",
-    "autotype": false,
-    "deps": { "commons_io": true }
-  }
+  "expect": { "has_expect_class": true },
+  "next": [
+    "poc_get(..., expect_bypass=true)",
+    "deps_probe(target='http://127.0.0.1:18268/api/fastjson')",
+    "poc_catalog"
+  ]
 }
 ```
-
-非 Fastjson：无 `version` / `expect`，`skipped` 含 `["version","expect"]`。可选：`include_dns_version`、`headers`、`proxy`、`base_body`。
 
 #### `deps_probe`
 
 ```json
-{
-  "target": "http://127.0.0.1:18268/api/fastjson",
-  "categories": ["commons-io", "spring"]
-}
+{ "target": "http://127.0.0.1:18268/api/fastjson" }
 ```
 
 ```json
@@ -128,23 +135,28 @@ MCP 返回已对 Agent **精简**：去掉 `evidence` / `notes` / `raw` / 空字
   "ok": true,
   "result": {
     "method": "class",
-    "scanned": 12,
     "present_count": 2,
-    "absent_count": 10,
-    "summary": "扫描 12 个类，发现 2 个依赖",
     "present": [
-      {
-        "clazz": "org.apache.commons.io.ByteOrderMark",
-        "description": "commons-io（通用）",
-        "category": "commons-io"
-      }
-    ],
-    "notes": ["校准：已改用 Class MiscCodec"]
-  }
+      { "clazz": "org.apache.commons.io.ByteOrderMark", "category": "commons-io" }
+    ]
+  },
+  "next": ["poc_catalog"]
 }
 ```
 
-默认 `method=character`（AutoType 关时降级 `class`）；无回显可 `method=dns`。只返回 `present`，不含全量 `results`。
+#### `probe_catalog` / `probe_get`
+
+```json
+{ "kind": "detect" }
+```
+
+→ 探针 id / category / description（默认无 `payload`）。`include_payload=true` 可内嵌；推荐：
+
+```json
+{ "kind": "detect", "probe_id": "…" }
+```
+
+→ `probe_get` 返回完整 `payload`。`kind=deps` 时 `probe_catalog` 返回 `templates`。
 
 #### `poc_catalog`
 
@@ -161,132 +173,136 @@ MCP 返回已对 Agent **精简**：去掉 `evidence` / `notes` / `raw` / 空字
         "id": "io_read_error",
         "title": "commons-io 报错读文件/目录",
         "requires": ["commons-io", "jdk.nashorn.api.scripting.URLReader"],
-        "input_fields": ["url", "read_length", "read_charset", "guess_byte", "bom_bytes"]
+        "jdk": "8–14（含 Nashorn）",
+        "doc": "fastjson-1.2.68",
+        "script": true
       }
     ]
-  },
-  "echo_engines": [{ "id": "auto", "title": "auto（按序探测）" }],
-  "waf_techniques": [{ "id": "unicode", "title": "Unicode 编码" }],
-  "expect_bypass_hint": {
-    "1.2.68": "expect_bypass=true → wrap_currency=true"
-  },
-  "script_hint": "复杂逻辑改参用 poc_script；自动化爆破优先 poc_run(…)"
+  }
 }
 ```
 
-#### `poc_run`
-
-仅生成：
+#### `poc_meta`
 
 ```json
-{
-  "family": "1.2.68",
-  "options": { "gadget": "io_read_error", "url": "file:///tmp/flag" }
-}
+{ "family": "1.2.68", "gadget": "mysql_jdbc" }
 ```
 
 ```json
 {
   "ok": true,
   "family": "1.2.68",
-  "result": {
-    "ok": true,
-    "gadget": "io_read_error",
-    "payload": "{\"abc\":{\"@type\":\"java.lang.AutoCloseable\",…}",
-    "requires": ["commons-io", "jdk.nashorn.api.scripting.URLReader"],
-    "summary": "已生成 … payload（未发送）"
-  }
-}
-```
-
-发送并爆破读：
-
-```json
-{
-  "family": "1.2.68",
-  "send": true,
-  "target": "http://127.0.0.1:18268/api/fastjson",
-  "options": {
-    "gadget": "io_read_error",
-    "url": "file:///tmp/flag",
-    "read_length": 16,
-    "read_charset": "mixed"
-  }
-}
-```
-
-```json
-{
-  "ok": true,
-  "family": "1.2.68",
-  "result": {
-    "ok": true,
-    "gadget": "io_read_error",
-    "sent": true,
-    "status_code": 200,
-    "read_bytes": [70, 76, 65, 71],
-    "read_content": "FLAG",
-    "summary": "已读出 4 字节"
-  }
-}
-```
-
-`1.2.47` + 期望类绕过：`expect_bypass=true`，`options.gadget=jdbc_rowset`，`options.jndi_url=…`。WAF：`waf_techniques: ["unicode"]`。`cve-2026-16723` 始终执行，忽略 `send`。
-
-#### `poc_script`
-
-```json
-{}
-```
-
-```json
-{
-  "ok": true,
-  "scripts": [
+  "gadget": "mysql_jdbc",
+  "args": [
     {
-      "family": "1.2.68",
-      "gadget": "io_read_error",
-      "filename": "1.2.68_io_read_error.py",
-      "title": "commons-io 报错读文件",
-      "summary": "逐字节 BOM 爆破…请改 ERROR_MARKERS / TARGET / FILE_URL"
+      "flag": "host",
+      "required": false,
+      "arg_type": "str",
+      "help": "MySQL/PG host",
+      "default": null
+    },
+    {
+      "flag": "outbound",
+      "required": false,
+      "arg_type": "bool",
+      "help": "mysql_jdbc：true=出网连恶意 MySQL；false=NamedPipe 不出网",
+      "default": true
     }
   ],
-  "hint": "传入 family 与 gadget 获取固定原脚本正文…"
+  "tool_args": [
+    {
+      "flag": "expect_bypass",
+      "required": false,
+      "arg_type": "bool",
+      "help": "poc_get 顶层参数…",
+      "default": false
+    }
+  ],
+  "note": "args[].flag 即 poc_get.options 键名；tool_args 为 poc_get 顶层参数"
 }
 ```
+
+#### `poc_get`
+
+```json
+{
+  "family": "1.2.68",
+  "gadget": "io_read_error",
+  "options": { "url": "file:///tmp/flag", "guess_byte": 70 }
+}
+```
+
+成功时**直接返回** payload 字符串（不再包 `ok` / `family`）：
+
+```json
+"{\"abc\":{\"@type\":\"java.lang.AutoCloseable\",…}"
+```
+
+有期望类：`expect_bypass=true`。多步链（如部分 1.2.80）返回字符串数组。失败才是 `{ "ok": false, "error": "…" }`。参数先 `poc_meta`；文档 / 脚本请分别 `docs_get` / `poc_script`。
+
+#### `poc_script`
 
 ```json
 { "family": "1.2.68", "gadget": "io_read_error" }
 ```
 
-→ `script` 为完整 Python 原文（按环境自行改）。
+→ `{ "ok": true, "filename": "…", "script": "…" }`。不传参仅列目录。
+
+#### `waf_catalog` / `waf_apply`
+
+`waf_catalog`：`[{ "id", "title" }]`，详解 `docs_get(slug="waf-bypass/1-unicode-hex-编码")`。
+
+```json
+{
+  "payload": "{\"@type\":\"java.lang.String\",\"val\":\"a\"}",
+  "techniques": ["unicode", "multi_comma"],
+  "mode": "stack"
+}
+```
+
+→ 直接返回混淆后的 JSON 字符串。`mode=variants` 时返回字符串数组。
 
 #### `docs_list` / `docs_get`
 
-```json
-{}
-```
+`docs_list` 第一步只返回顶级文档：
 
 ```json
 {
   "ok": true,
   "docs": [
-    {
-      "slug": "fastjson-detect",
-      "title": "Fastjson 探测分析",
-      "description": "识别 Fastjson、区分其他 JSON 库…",
-      "order": 4
-    }
-  ],
-  "hint": "使用 docs_get(slug=...) 获取正文"
+    { "slug": "fastjson-1.2.68", "title": "≤1.2.68 利用技巧" },
+    { "slug": "fastjson-detect", "title": "Fastjson 探测分析" }
+  ]
 }
 ```
 
+第二步 `docs_get(顶级 slug)` 返回该文档的章节目录（不返回正文）：
+
 ```json
-{ "slug": "fastjson-detect" }
+{ "slug": "fastjson-1.2.68" }
 ```
 
-→ `title` + `content`（Markdown 正文）。
+```json
+{
+  "ok": true,
+  "slug": "fastjson-1.2.68",
+  "title": "≤1.2.68 利用技巧",
+  "sections": [
+    { "slug": "fastjson-1.2.68/13-mysqljdbc", "title": "13. MysqlJdbc", "has_payload": true },
+    { "slug": "fastjson-1.2.68/13-1-出网", "title": "13.1 出网", "has_payload": true,
+      "parent": "fastjson-1.2.68/13-mysqljdbc" }
+  ]
+}
+```
+
+第三步 `docs_get(顶级/章节)` 才返回章节正文：
+
+```json
+{ "slug": "fastjson-1.2.68/13-1-出网" }
+```
+
+→ `{ "ok": true, "slug": "…", "title": "13.1 出网", "content": "…" }`（**仅该段**）。
+
 ### 方式一：stdio
 
 ```bash
@@ -383,7 +399,7 @@ Cursor `mcp.json`（HTTP）示例：
 | ≤1.2.47 缓存绕过 | JNDI / BCEL / C3P0 / MyBatis / H2 等；可选回显、内存马、getter 触发 |
 | ≤1.2.68 AutoCloseable | 写/截断文件、commons-io、读文件、JDBC 等 |
 | ≤1.2.80 Exception | 多步缓存链（需共享 ParserConfig） |
-| 1.2.83 CVE-2026-16723 | jar:http / fd-cache；回显或内存马 |
+| CVE-2026-16723（1.2.68–1.2.83） | jar:http / fd-cache；回显或内存马；靶场用 1.2.83 |
 
 ### `/waf` — WAF 绕过
 

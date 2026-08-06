@@ -83,7 +83,7 @@ Backend (Python FastAPI)
 - CLI：`detect` / `deps` / `expect` / `poc-1247` / `poc-1268` / `poc-1280` / `poc-16723` / `waf` / `serve` 等
 - 前端：Next.js + shadcn（`web/`，开发时 rewrite 代理 `/api/*` → 后端）
 - 识别 / 版本 / 期望类 / 依赖 / PoC / WAF 页已对接真实 API
-- PoC 页 Tab：≤1.2.47 / ≤1.2.68 / ≤1.2.80 / CVE-2026-16723；可勾选 WAF 变换叠加
+- PoC 页 Tab：≤1.2.47 / ≤1.2.68 / ≤1.2.80 / CVE-2026-16723（1.2.68–1.2.83）；可勾选 WAF 变换叠加
 - 设置页可配置 CEYE Token 与 Identifier 子域名
 
 ### 3.4 Docker 靶场一览
@@ -95,7 +95,7 @@ Backend (Python FastAPI)
 | `lab/fastjson-1247-lab` | `18247` | ≤1.2.47 全依赖（JDK8u242） |
 | `lab/fastjson-1268-lab` | `18268` | ≤1.2.68 AutoCloseable 依赖（JDK11） |
 | `lab/fastjson-1280-lab` | `18280` | ≤1.2.80 Exception 缓存依赖（JDK11，共享 ParserConfig） |
-| `lab/cve-2026-16723` | `18083`（JDWP `18505`） | 1.2.83 Undertow fat jar |
+| `lab/cve-2026-16723` | `18083`（JDWP `18505`） | CVE-2026-16723（1.2.68–1.2.83）Undertow；lab 用 1.2.83 |
 
 ### 3.5 未完成（相对最终目标）
 
@@ -119,7 +119,7 @@ Backend (Python FastAPI)
 
 ### Phase 3 — 各版本 PoC + 自定义字节码（主体已完成）
 
-- ✅ CVE-2026-16723（1.2.83）：jar:http / fd-cache 证明 PoC + Undertow 靶场 + Web `/poc`
+- ✅ CVE-2026-16723（**1.2.68–1.2.83**，不仅限于 1.2.83）：jar:http / fd-cache 证明 PoC + Undertow 靶场（lab 用 1.2.83）+ Web `/poc`
 - ✅ ≤1.2.47 Class 缓存绕过：JdbcRowSet / BCEL(dbcp×4) / C3P0 / MyBatis / H2
   - 模块：`src/fastjson_toolkit/poc/v1_2_47/`；API：`GET/POST /api/poc/1.2.47`；CLI：`fjtoolkit poc-1247`
   - Web `/poc` Tab「≤1.2.47」；靶场：`lab/fastjson-1247-lab`（`:18247`）
@@ -173,7 +173,7 @@ Backend (Python FastAPI)
 1. **前端强制 shadcn**：新 UI 不引入非 shadcn 的平行组件库；样式走项目既有 Tailwind + shadcn 体系（见 `AGENTS.md`）。
 2. **安全使用范围**：仅用于授权测试 / 本地靶场复现。
 3. **密钥**：CEYE token 等只放 `.env`，不入库。
-4. **Agent 友好**：API 保持结构化 JSON（`is_fastjson` / `confidence` / `evidence` / `next_actions`）；另提供 **MCP**（`fjtoolkit mcp` stdio + FastAPI `/mcp` Streamable HTTP），工具复用同一套 detect / deps / poc / 文档引擎。
+4. **Agent 友好**：API 保持结构化 JSON（`is_fastjson` / `confidence` / `evidence` / `next_actions`）；另提供 **MCP**（`fjtoolkit mcp` stdio + Streamable HTTP）与可迁移 **`tools/*.py` CLI**，工具 handlers 同源（`tools/_lib/`），复用 detect / deps / poc / 文档引擎。
 
 ---
 
@@ -181,6 +181,7 @@ Backend (Python FastAPI)
 
 ```
 ├── scripts/start.* / stop.*     # 一键启停 Web（默认后端 --reload，不含靶场）
+├── tools/                       # 可迁移 CLI（对齐 MCP）；handlers 在 tools/_lib/
 ├── docs/design.md               # 本文档
 ├── AGENTS.md                    # Agent 约定
 ├── src/fastjson_toolkit/        # 后端核心
@@ -194,15 +195,16 @@ Backend (Python FastAPI)
 └── .env.example                 # CEYE 等配置模板
 ```
 
-### MCP 工具（摘要）
+### MCP / tools CLI 工具（摘要）
 
 | 工具 | 作用 |
 |------|------|
 | `detect_pipeline` | 识别 → 版本 → 期望类（CEYE 读 `.env`） |
 | `deps_probe` | 依赖探测 |
-| `poc_catalog` / `poc_run` | PoC 目录与生成/发送 |
-| `poc_script` | 固定原脚本（LLM 自行改）；不传参列目录 |
-| `docs_list` / `docs_get` | 漏洞分析文档 |
+| `probe_catalog` / `probe_get` | 探测探针目录 / 单条 payload |
+| `poc_catalog` / `poc_meta` / `poc_get` / `poc_script` | PoC 目录 / 参数元数据 / payload 字符串 / 脚本（分工具，不代发） |
+| `waf_catalog` / `waf_apply` | WAF 技巧与本地混淆（成功直接返回 payload） |
+| `docs_list` / `docs_get` | 顶级文档目录 / 章节目录或单段 Markdown（两级调用） |
 
 HTTP：设置页启停独立服务（`MCP_HTTP_HOST` / `PORT` / `TOKEN`），默认 `127.0.0.1:8100/mcp`。
 

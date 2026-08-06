@@ -5,6 +5,7 @@
 | 目录 | 放什么 | 不要放 |
 |------|--------|--------|
 | `scripts/` | 一键启停 Web：`start.*` / `stop.*` | Python 测试、靶场验证、一次性探针 |
+| `tools/` | 与 MCP 对齐的可迁移 CLI（`*.py` / `*.sh`）+ `_lib` handlers | 启停 Web、pytest |
 | `tests/` | pytest 单元测试：`test_*.py`（`pytest -q`） | 启停脚本 |
 | `tests/lab/` | 需本地 Docker 靶场的**手动**验证 / 压测 / DNS 探针脚本 | 会被 `pytest` 默认收集的 `test_*.py` |
 
@@ -22,17 +23,22 @@ python tests/lab/lab_test_1280_gadgets.py
 
 ### MCP（Agent 工具调用）
 
-实现位于 `src/fastjson_toolkit/mcp/`，与 REST 同源：
+实现位于 `src/fastjson_toolkit/mcp/`（传输）+ `tools/_lib/`（纯 handlers，与 `tools/*.py` CLI 同源）：
 
 | 传输 | 入口 |
 |------|------|
 | stdio | `fjtoolkit mcp` |
 | HTTP | 设置页启停，或 `fjtoolkit mcp --http`（默认 `127.0.0.1:8100/mcp`，可配 Token） |
+| CLI | `python tools/<tool>.py -h` / `./tools/<tool>.sh -h`（见 `tools/README.md`） |
 
-工具：`detect_pipeline`、`deps_probe`、`poc_catalog`、`poc_run`、`poc_script`、`docs_list`、`docs_get`。
+工具：`detect_pipeline`、`deps_probe`、`probe_catalog`、`probe_get`、`poc_catalog`、`poc_meta`、`poc_get`、`poc_script`、`waf_catalog`、`waf_apply`、`docs_list`、`docs_get`。
+MCP / `tools/` CLI 定位：版本/依赖探测 + PoC 知识库检索 + 本地 WAF 混淆；**不代发** exploit（已移除 `poc_run`）。
 MCP 的 DNS/CEYE 默认读项目 `.env`（`CEYE_TOKEN` / `CEYE_DOMAIN`，设置页可配），工具参数不暴露 token/domain。
-`detect_pipeline` 的 `target` 应为反序列化点；根路径会尝试 `/api/health` 与常见路径。`deps_probe(method=character)` 在 AutoType 关闭时自动降级 Class MiscCodec。`poc_run` 的 `io_read_error` 需 `send=true` + `options.read_length` 才爆破读全文。
-`poc_script` 只返回固定原脚本（如 `1.2.68/io_read_error`），由 LLM 按环境自行改；不传参可列目录。文档读 `web/content/docs/`（可用 `FASTJSON_DOCS_DIR` 覆盖）。细节见 `README.md`「MCP」节。
+`detect_pipeline` 的 `target` 应为反序列化点；根路径会尝试 `/api/health` 与常见路径。`deps_probe(method=character)` 在 AutoType 关闭时自动降级 Class MiscCodec。
+输出刻意精简：目录不含正文；`poc_get` / `probe_get` / `waf_apply` 成功时直接返回 payload 字符串；`poc_meta` 返回 `flag/required/arg_type/help`；`docs_list` 仅顶级目录，`docs_get(父)` 返回章节目录，`docs_get(父/章节)` 只返回该段；脚本 `poc_script`。
+自动化探测失败时用 `probe_catalog` → `probe_get` + `docs_list` → `docs_get(fastjson-detect)` → `docs_get(fastjson-detect/…)`。
+工作流：`poc_catalog` → `poc_meta` → `poc_get`（payload）→ 需要时 `docs_list` → `docs_get(父)` → `docs_get(章节)` / `poc_script` / `waf_apply` → LLM 自行发包。
+`poc_script` 只返回固定原脚本（如 `1.2.68/io_read_error`），由 LLM 按环境自行改；不传参可列目录。文档读 `web/content/docs/`（可用 `FASTJSON_DOCS_DIR` 覆盖）。细节见 `README.md`「MCP」节与 `tools/README.md`。
 
 ---
 
