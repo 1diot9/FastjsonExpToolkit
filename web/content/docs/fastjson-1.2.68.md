@@ -14,6 +14,7 @@ order: 2
 - [≤1.2.47 利用技巧](/docs/fastjson-1.2.47)
 - [1.2.83 利用技巧](/docs/fastjson-1.2.83)
 - [Getter 触发技巧](/docs/getter-trigger)
+- [写文件落地 RCE](/docs/writefile-rce)
 - [期望类判断](/docs/fastjson-detect#4-期望类判断)
 - [commons-io 任意文件读写](http://www.bmth666.cn/2025/12/30/Fastjson-commons-io%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E8%AF%BB%E5%86%99/)
 

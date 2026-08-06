@@ -17,6 +17,7 @@ order: 4
 - [≤1.2.80 利用技巧](/docs/fastjson-1.2.80)
 - [≤1.2.47 利用技巧](/docs/fastjson-1.2.47)
 - [Getter 触发技巧](/docs/getter-trigger)
+- [写文件落地 RCE](/docs/writefile-rce)
 
 ---
 

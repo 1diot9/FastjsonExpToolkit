@@ -8,7 +8,7 @@ order: 5
 
 本文汇总 Fastjson Payload 常见的 **WAF 绕过** 手法，供安全研究与本地复现参考。实际效果依赖目标 WAF 规则与 Fastjson 版本，需按环境验证。
 
-相关阅读：[Fastjson 探测分析](/docs/fastjson-detect) · [≤1.2.80 利用技巧](/docs/fastjson-1.2.80) · [≤1.2.68 利用技巧](/docs/fastjson-1.2.68) · [≤1.2.47 利用技巧](/docs/fastjson-1.2.47) · [Getter 触发技巧](/docs/getter-trigger)
+相关阅读：[Fastjson 探测分析](/docs/fastjson-detect) · [≤1.2.80 利用技巧](/docs/fastjson-1.2.80) · [≤1.2.68 利用技巧](/docs/fastjson-1.2.68) · [≤1.2.47 利用技巧](/docs/fastjson-1.2.47) · [Getter 触发技巧](/docs/getter-trigger) · [写文件落地 RCE](/docs/writefile-rce)
 
 ---
 

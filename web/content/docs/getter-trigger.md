@@ -16,6 +16,7 @@ Fastjson 反序列化里，不少 Gadget 依赖 **getter**（如 `getConnection(
 - [≤1.2.68 利用技巧](/docs/fastjson-1.2.68)
 - [≤1.2.80 利用技巧](/docs/fastjson-1.2.80)
 - [≤1.2.47 利用技巧](/docs/fastjson-1.2.47)
+- [写文件落地 RCE](/docs/writefile-rce)
 
 本工具 PoC 页 / CLI 已统一暴露 `getter_trigger`：`ref` / `json_key` / `currency` / `currency_json_key`。
 

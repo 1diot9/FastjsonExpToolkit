@@ -13,6 +13,7 @@ order: 0
 - [≤1.2.68 利用技巧](/docs/fastjson-1.2.68)
 - [≤1.2.80 利用技巧](/docs/fastjson-1.2.80)
 - [≤1.2.47 利用技巧](/docs/fastjson-1.2.47)
+- [写文件落地 RCE](/docs/writefile-rce)
 - [写文件 + JSONType 组合漏洞](https://flowerwind.github.io/2025/02/28/%E5%88%86%E4%BA%AB%E4%B8%80%E6%AC%A1%E7%BB%84%E5%90%88%E6%BC%8F%E6%B4%9E%E6%8C%96%E6%8E%98%E6%8B%BF%E4%B8%8B%E7%9B%AE%E6%A0%87/)
 - [类名修改脚本](https://github.com/1diot9/MyJavaSecStudy/blob/main/fastjson/fastjson/fastj-1.2.83/classNameModefier.py)
 - [fd 利用脚本](https://github.com/1diot9/MyJavaSecStudy/blob/main/fastjson/fastjson/fastj-1.2.83/cve-2026-16723/poc_fd_cache_writefile.py)
@@ -24,7 +25,7 @@ order: 0
 
 1.2.83 通过 `@type` 加载类时有白名单机制，但可通过 `@JSONType` 等注解绕过。
 
-配合写文件漏洞（写 `tomcat-docbase`，或写 jar 到类加载路径），再用 `@type` 触发，仍有机会 getshell。思路详见上方「写文件 + JSONType」相关文章。
+配合写文件漏洞（写 `tomcat-docbase`，或写 jar 到类加载路径），再用 `@type` 触发，仍有机会 getshell。落地手法见 [写文件落地 RCE](/docs/writefile-rce)；`@JSONType` 细节见上方相关文章。
 
 ---
 

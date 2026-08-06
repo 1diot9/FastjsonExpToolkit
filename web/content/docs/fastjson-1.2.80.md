@@ -15,6 +15,7 @@ order: 1
 - [≤1.2.47 利用技巧](/docs/fastjson-1.2.47)
 - [1.2.83 利用技巧](/docs/fastjson-1.2.83)
 - [Getter 触发技巧](/docs/getter-trigger)
+- [写文件落地 RCE](/docs/writefile-rce)
 
 推荐用 [java-chains](https://github.com/vulhub/java-chains) 生成具体 payload。
 

@@ -8,7 +8,7 @@ order: 3
 
 本文分析 Fastjson **≤1.2.47** 经典利用：通过 `@type` 为 `java.lang.Class` 将目标类写入缓存，再在 `checkAutoType` 中命中缓存以绕过黑名单。供安全研究与本地复现参考。
 
-相关阅读：[≤1.2.80 利用技巧](/docs/fastjson-1.2.80) · [≤1.2.68 利用技巧](/docs/fastjson-1.2.68) · [Getter 触发技巧](/docs/getter-trigger) · [WAF 绕过技巧](/docs/waf-bypass) · [Fastjson 探测分析](/docs/fastjson-detect)
+相关阅读：[≤1.2.80 利用技巧](/docs/fastjson-1.2.80) · [≤1.2.68 利用技巧](/docs/fastjson-1.2.68) · [Getter 触发技巧](/docs/getter-trigger) · [写文件落地 RCE](/docs/writefile-rce) · [WAF 绕过技巧](/docs/waf-bypass) · [Fastjson 探测分析](/docs/fastjson-detect)
 
 ---
 
