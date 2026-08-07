@@ -184,7 +184,7 @@ MCP_HTTP_PORT=8100
 MCP_HTTP_TOKEN=your-secret
 ```
 
-客户端鉴权：`Authorization: Bearer <token>` 或 `X-MCP-Token`。
+客户端鉴权：请求头 `X-MCP-Token`（不用 `Authorization: Bearer`，以免 Cursor 误判为 OAuth）。
 
 Cursor `mcp.json`（HTTP）示例：
 
@@ -194,7 +194,7 @@ Cursor `mcp.json`（HTTP）示例：
     "fastjson-toolkit-http": {
       "url": "http://127.0.0.1:8100/mcp",
       "headers": {
-        "Authorization": "Bearer your-secret"
+        "X-MCP-Token": "your-secret"
       }
     }
   }

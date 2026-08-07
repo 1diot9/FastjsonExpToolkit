@@ -1,20 +1,20 @@
-"""MCP HTTP access-token helpers."""
+"""MCP HTTP access-token helpers.
+
+Use a custom header only — never ``Authorization: Bearer`` / ``WWW-Authenticate:
+Bearer``, which Cursor may treat as an OAuth challenge.
+"""
 
 from __future__ import annotations
 
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+MCP_TOKEN_HEADER = "x-mcp-token"
+
 
 def extract_mcp_token(headers: Headers, query_string: bytes = b"") -> str | None:
-    """Resolve client token from Authorization / X-MCP-Token / ?token=."""
-    auth = headers.get("authorization") or ""
-    if auth.lower().startswith("bearer "):
-        value = auth[7:].strip()
-        if value:
-            return value
-
-    header_token = (headers.get("x-mcp-token") or "").strip()
+    """Resolve client token from ``X-MCP-Token`` or ``?token=``."""
+    header_token = (headers.get(MCP_TOKEN_HEADER) or "").strip()
     if header_token:
         return header_token
 
@@ -46,6 +46,8 @@ class McpTokenMiddleware:
             body = '{"error":"unauthorized","detail":"MCP Token invalid or missing"}'.encode(
                 "utf-8"
             )
+            # Do not send WWW-Authenticate: Bearer — that triggers OAuth discovery
+            # in some MCP clients (e.g. Cursor).
             await send(
                 {
                     "type": "http.response.start",
@@ -53,7 +55,6 @@ class McpTokenMiddleware:
                     "headers": [
                         (b"content-type", b"application/json; charset=utf-8"),
                         (b"content-length", str(len(body)).encode("ascii")),
-                        (b"www-authenticate", b'Bearer realm="mcp"'),
                     ],
                 }
             )

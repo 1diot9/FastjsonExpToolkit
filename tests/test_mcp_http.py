@@ -16,14 +16,13 @@ from fastjson_toolkit.mcp import http_runtime as runtime
 from starlette.datastructures import Headers
 
 
-def test_extract_mcp_token_bearer_and_header() -> None:
-    assert (
-        extract_mcp_token(Headers({"authorization": "Bearer secret"})) == "secret"
-    )
+def test_extract_mcp_token_header_and_query() -> None:
     assert extract_mcp_token(Headers({"x-mcp-token": "abc"})) == "abc"
     assert (
         extract_mcp_token(Headers({}), query_string=b"token=fromqs") == "fromqs"
     )
+    # Authorization: Bearer is intentionally ignored (avoids OAuth misdetection)
+    assert extract_mcp_token(Headers({"authorization": "Bearer secret"})) is None
 
 
 def test_token_middleware_rejects_without_token() -> None:
@@ -34,10 +33,10 @@ def test_token_middleware_rejects_without_token() -> None:
     app.add_middleware(McpTokenMiddleware, expected_token="s3cret")
     client = TestClient(app)
     assert client.get("/").status_code == 401
-    assert client.get("/", headers={"Authorization": "Bearer wrong"}).status_code == 401
-    assert (
-        client.get("/", headers={"Authorization": "Bearer s3cret"}).status_code == 200
-    )
+    # no WWW-Authenticate (would look like OAuth to Cursor)
+    assert "www-authenticate" not in {k.lower() for k in client.get("/").headers}
+    assert client.get("/", headers={"Authorization": "Bearer s3cret"}).status_code == 401
+    assert client.get("/", headers={"X-MCP-Token": "wrong"}).status_code == 401
     assert client.get("/", headers={"X-MCP-Token": "s3cret"}).text == "ok"
 
 

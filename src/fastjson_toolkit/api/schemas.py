@@ -125,7 +125,7 @@ class McpHttpSettingsUpdateRequest(BaseModel):
     port: int = Field(8100, ge=1, le=65535, description="MCP HTTP 端口")
     token: Optional[str] = Field(
         None,
-        description="访问 Token；留空保留原值；客户端用 Authorization: Bearer 或 X-MCP-Token",
+        description="访问 Token；留空保留原值；客户端用请求头 X-MCP-Token",
     )
     clear_token: bool = Field(False, description="清空已保存的 Token")
 

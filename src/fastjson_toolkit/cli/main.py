@@ -1022,7 +1022,7 @@ def mcp_cmd(
     token: Optional[str] = typer.Option(
         None,
         "--token",
-        help="访问 Token（Authorization: Bearer / X-MCP-Token）；默认读 MCP_HTTP_TOKEN",
+        help="访问 Token（请求头 X-MCP-Token）；默认读 MCP_HTTP_TOKEN",
     ),
 ) -> None:
     """启动 MCP Server（默认 stdio；``--http`` 为独立 HTTP 服务）。"""

@@ -209,10 +209,10 @@ export default function SettingsPage() {
     const entry: Record<string, unknown> = { url };
     const effectiveToken = mcpToken.trim();
     if (effectiveToken) {
-      entry.headers = { Authorization: `Bearer ${effectiveToken}` };
+      entry.headers = { "X-MCP-Token": effectiveToken };
     } else if (mcpStatus?.token_set) {
       entry.headers = {
-        Authorization: "Bearer <MCP_HTTP_TOKEN>",
+        "X-MCP-Token": "<MCP_HTTP_TOKEN>",
       };
     }
     const text = JSON.stringify(
@@ -372,8 +372,8 @@ export default function SettingsPage() {
           <CardTitle>MCP HTTP</CardTitle>
           <CardDescription>
             独立 Streamable HTTP 服务，供 Cursor 等 Agent 调用。可自定义监听地址与请求鉴权
-            Token（客户端通过 <code>Authorization: Bearer</code> 或{" "}
-            <code>X-MCP-Token</code> 传递）。
+            Token（客户端通过请求头 <code>X-MCP-Token</code> 传递；不用{" "}
+            <code>Authorization: Bearer</code>，以免 Cursor 误走 OAuth）。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">

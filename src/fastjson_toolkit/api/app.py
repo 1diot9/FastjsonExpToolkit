@@ -93,7 +93,8 @@ FastjsonExpToolkit 后端 API：识别、版本探测、期望类探测、依赖
 def _cursor_mcp_config(url: str, token: str) -> dict[str, Any]:
     entry: dict[str, Any] = {"url": url}
     if token:
-        entry["headers"] = {"Authorization": f"Bearer {token}"}
+        # Custom header only — Authorization: Bearer triggers OAuth discovery in Cursor
+        entry["headers"] = {"X-MCP-Token": token}
     return {"mcpServers": {"fastjson-toolkit-http": entry}}
 
 
