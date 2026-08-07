@@ -1,4 +1,4 @@
-"""Shared argparse helpers for tools/*.py entrypoints."""
+"""Shared argparse helpers for tools/fjtool.py."""
 
 from __future__ import annotations
 

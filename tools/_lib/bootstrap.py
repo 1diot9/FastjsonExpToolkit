@@ -1,4 +1,4 @@
-"""Ensure repo ``src/`` is importable when running tools/*.py without install."""
+"""Ensure repo ``src/`` is importable when running tools/fjtool.py without install."""
 
 from __future__ import annotations
 

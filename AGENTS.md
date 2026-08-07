@@ -5,7 +5,7 @@
 | 目录 | 放什么 | 不要放 |
 |------|--------|--------|
 | `scripts/` | 一键启停 Web：`start.*` / `stop.*` | Python 测试、靶场验证、一次性探针 |
-| `tools/` | 与 MCP 对齐的可迁移 CLI（`*.py` / `*.sh`）+ `_lib` handlers | 启停 Web、pytest |
+| `tools/` | 与 MCP 对齐的可迁移 CLI（单一入口 `fjtool.py` / `fjtool.sh`）+ `_lib` handlers | 启停 Web、pytest、多入口散脚本 |
 | `tests/` | pytest 单元测试：`test_*.py`（`pytest -q`） | 启停脚本 |
 | `tests/lab/` | 需本地 Docker 靶场的**手动**验证 / 压测 / DNS 探针脚本 | 会被 `pytest` 默认收集的 `test_*.py` |
 
@@ -23,13 +23,13 @@ python tests/lab/lab_test_1280_gadgets.py
 
 ### MCP（Agent 工具调用）
 
-实现位于 `src/fastjson_toolkit/mcp/`（传输）+ `tools/_lib/`（纯 handlers，与 `tools/*.py` CLI 同源）：
+实现位于 `src/fastjson_toolkit/mcp/`（传输）+ `tools/_lib/`（纯 handlers，与 `tools/fjtool.py` CLI 同源）：
 
 | 传输 | 入口 |
 |------|------|
 | stdio | `fjtoolkit mcp` |
 | HTTP | 设置页启停，或 `fjtoolkit mcp --http`（默认 `127.0.0.1:8100/mcp`，可配 Token） |
-| CLI | `python tools/<tool>.py -h` / `./tools/<tool>.sh -h`（见 `tools/README.md`） |
+| CLI | `python tools/fjtool.py <command> -h` / `./tools/fjtool.sh …`（见 `tools/README.md`） |
 
 工具：`detect_pipeline`、`deps_probe`、`probe_catalog`、`probe_get`、`poc_catalog`、`poc_meta`、`poc_get`、`poc_script`、`waf_catalog`、`waf_apply`、`docs_list`、`docs_get`。
 MCP / `tools/` CLI 定位：版本/依赖探测 + PoC 知识库检索 + 本地 WAF 混淆；**不代发** exploit（已移除 `poc_run`）。

@@ -46,13 +46,13 @@ CEYE_DOMAIN=hpdth2.ceye.io
 
 ## tools/ CLI（可迁移，对齐 MCP）
 
-与 MCP **同名同语义** 的轻量脚本入口，便于拷到其他项目作基础工具。不代发 exploit。
+与 MCP **同名同语义** 的轻量入口，便于拷到其他项目作基础工具。不代发 exploit。单一入口 + 子命令：
 
 ```bash
-python tools/detect_pipeline.py -h
-./tools/docs_list.sh
-python tools/poc_catalog.py --family 1.2.68
-python tools/poc_get.py 1.2.68 mysql_jdbc --options '{"ldap_url":"ldap://..."}'
+python tools/fjtool.py -h
+python tools/fjtool.py docs_list
+./tools/fjtool.sh poc_catalog --family 1.2.68
+python tools/fjtool.py poc_get 1.2.68 mysql_jdbc --options '{"ldap_url":"ldap://..."}'
 ```
 
 实现与迁移说明见 [`tools/README.md`](tools/README.md)。Handler 在 `tools/_lib/`，MCP 传输层复用同一套。

@@ -173,7 +173,7 @@ Backend (Python FastAPI)
 1. **前端强制 shadcn**：新 UI 不引入非 shadcn 的平行组件库；样式走项目既有 Tailwind + shadcn 体系（见 `AGENTS.md`）。
 2. **安全使用范围**：仅用于授权测试 / 本地靶场复现。
 3. **密钥**：CEYE token 等只放 `.env`，不入库。
-4. **Agent 友好**：API 保持结构化 JSON（`is_fastjson` / `confidence` / `evidence` / `next_actions`）；另提供 **MCP**（`fjtoolkit mcp` stdio + Streamable HTTP）与可迁移 **`tools/*.py` CLI**，工具 handlers 同源（`tools/_lib/`），复用 detect / deps / poc / 文档引擎。
+4. **Agent 友好**：API 保持结构化 JSON（`is_fastjson` / `confidence` / `evidence` / `next_actions`）；另提供 **MCP**（`fjtoolkit mcp` stdio + Streamable HTTP）与可迁移 **`tools/fjtool.py` CLI**（子命令对齐 MCP），工具 handlers 同源（`tools/_lib/`），复用 detect / deps / poc / 文档引擎。
 
 ---
 
@@ -181,7 +181,7 @@ Backend (Python FastAPI)
 
 ```
 ├── scripts/start.* / stop.*     # 一键启停 Web（默认后端 --reload，不含靶场）
-├── tools/                       # 可迁移 CLI（对齐 MCP）；handlers 在 tools/_lib/
+├── tools/fjtool.py              # 可迁移 CLI 单一入口（对齐 MCP 子命令）；handlers 在 tools/_lib/
 ├── docs/design.md               # 本文档
 ├── AGENTS.md                    # Agent 约定
 ├── src/fastjson_toolkit/        # 后端核心
