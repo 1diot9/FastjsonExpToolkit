@@ -275,7 +275,7 @@ class FastjsonExpectClassDetector:
         next_actions: list[str] = []
         if has_expect_class is True:
             next_actions.append(
-                "存在期望类：poc_run(..., expect_bypass=true) 或套 Currency / 双 @type expectClass"
+                "存在期望类：poc_get(..., expect_bypass=true) 或套 Currency / 双 @type expectClass"
             )
             next_actions.append(
                 "detect_pipeline / version 确认是否 ≥1.2.68，避免 Feature 探针误判"

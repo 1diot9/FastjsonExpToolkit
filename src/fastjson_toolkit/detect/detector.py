@@ -558,7 +558,7 @@ class FastjsonDetector:
                 parts.append("DNS 探针耗时明显增加")
             next_actions = [
                 "继续使用当前 target 跑 deps_probe（自动校准 Character/Class）",
-                "poc_catalog 按版本选 family；AutoType 关时 poc_run(expect_bypass=true)",
+                "poc_catalog 按版本选 family；AutoType 关时 poc_get(expect_bypass=true)",
                 "docs_list → docs_get 查阅对应版本分析",
             ]
             if autotype_disabled is True:

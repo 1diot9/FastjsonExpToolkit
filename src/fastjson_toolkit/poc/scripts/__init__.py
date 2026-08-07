@@ -16,7 +16,7 @@ class ScriptMeta:
     summary: str
 
 
-# Only scripts that need LLM-side edits. Use poc_run for one-shot payloads.
+# Only scripts that need LLM-side edits. Use poc_get for one-shot payload templates.
 SCRIPTS: tuple[ScriptMeta, ...] = (
     ScriptMeta(
         family="1.2.68",

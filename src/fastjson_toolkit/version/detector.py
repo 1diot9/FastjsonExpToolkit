@@ -1125,11 +1125,11 @@ class FastjsonVersionDetector:
         next_actions: list[str] = []
         if version_range == "1.2.83":
             next_actions.append(
-                "poc_catalog(family=cve-2026-16723) / poc_run 评估高版本利用面（需授权）"
+                "poc_catalog(family=cve-2026-16723) → poc_get / docs_get(fastjson-1.2.83)（需授权）"
             )
         elif version_range == "<=1.2.80":
             next_actions.append(
-                "poc_catalog(family=1.2.80) → poc_run；AutoType 关时用 expect_bypass"
+                "poc_catalog(family=1.2.80) → poc_get；AutoType 关时 expect_bypass=true"
             )
             if version_detail == "1.2.70-1.2.80":
                 next_actions.append(
@@ -1138,7 +1138,7 @@ class FastjsonVersionDetector:
                 )
         elif version_range == "<=1.2.68":
             next_actions.append(
-                "poc_catalog(family=1.2.68) → deps_probe 确认 commons-io 等 → poc_run"
+                "poc_catalog(family=1.2.68) → deps_probe 确认 commons-io 等 → poc_get"
             )
         elif version_range == "<=1.2.47":
             next_actions.append(
@@ -1163,7 +1163,7 @@ class FastjsonVersionDetector:
         if autotype_enabled is False and safemode_enabled is not True:
             next_actions.append(
                 "AutoType 关闭：先看 detect_pipeline.expect；"
-                "再用 poc_run(expect_bypass=true) / 1.2.68 AutoCloseable 链"
+                "再用 poc_get(expect_bypass=true) / 1.2.68 AutoCloseable 链"
             )
         if dns_skip_reason:
             next_actions.append(

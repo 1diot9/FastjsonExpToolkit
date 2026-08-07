@@ -466,7 +466,7 @@ class FastjsonDepsDetector:
         if present:
             cats = sorted({h.category for h in present})
             next_actions.append(
-                "poc_catalog → 按已确认依赖选 gadget；poc_run(family=…, options.gadget=…)"
+                "poc_catalog → 按已确认依赖选 gadget；poc_get(family=…, gadget=…)"
             )
             next_actions.append(f"已确认类别：{', '.join(cats)}")
         if method == "dns" and not present and unknown_count:
