@@ -29,7 +29,7 @@ python tests/lab/lab_test_1280_gadgets.py
 |------|------|
 | stdio | `fjtoolkit mcp` |
 | HTTP | 设置页启停，或 `fjtoolkit mcp --http`（默认 `127.0.0.1:8100/mcp`，可配 Token） |
-| CLI | `python tools/fjtool.py <command> -h` / `./tools/fjtool.sh …`（见 `tools/README.md`） |
+| CLI | `python tools/fjtool.py <command> -h` / `./tools/fjtool.sh …`（先按 README「tools/ CLI → 初始化」装好 `httpx`/`pydantic` 或 `pip install -e .`；见 `tools/README.md`） |
 
 工具：`detect_pipeline`、`deps_probe`、`probe_catalog`、`probe_get`、`poc_catalog`、`poc_meta`、`poc_get`、`poc_script`、`waf_catalog`、`waf_apply`、`docs_list`、`docs_get`。
 MCP / `tools/` CLI 定位：版本/依赖探测 + PoC 知识库检索 + 本地 WAF 混淆；**不代发** exploit（已移除 `poc_run`）。

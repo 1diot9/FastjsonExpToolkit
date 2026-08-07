@@ -4,6 +4,54 @@
 
 **单一入口**：`fjtool.py` / `fjtool.sh`，子命令与 MCP 工具同名。
 
+## 初始化（必做）
+
+需要 **Python >= 3.10**。CLI 仅依赖 `httpx` + `pydantic`（stdlib `argparse`），**不需要** typer / fastapi / mcp。
+
+### 本仓库内
+
+与主 README「快速开始」共用 venv：
+
+```bash
+# 仓库根目录
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
+
+pip install -e .
+# 或：pip install -e ".[dev]"
+# 最小依赖（不装本包）：pip install "httpx>=0.27" "pydantic>=2.7"
+```
+
+校验：
+
+```bash
+python tools/fjtool.py -h
+python tools/fjtool.py docs_list
+./tools/fjtool.sh docs_list
+```
+
+脚本会把 `<repo>/src` 与仓库根加入 `sys.path`（见 `_lib/bootstrap.py`）。若未 `pip install -e .`，也可用：
+
+```bash
+PYTHONPATH=src python tools/fjtool.py docs_list
+```
+
+常见问题：`ModuleNotFoundError`（`fastjson_toolkit` / `httpx` / `pydantic`）→ 激活错误的 Python，或未安装依赖。用 venv 内解释器显式运行：
+
+```bash
+.venv/bin/python tools/fjtool.py -h
+```
+
+可选 CEYE：仓库根 `.env` 中配置 `CEYE_TOKEN` / `CEYE_DOMAIN`（或复制 `.env.example`）。CLI **不**接受 token 参数。
+
+### 迁到其他项目后
+
+1. 按下方「迁到其他项目」拷贝 `tools/` + 引擎子集 + docs  
+2. 安装 `httpx` `pydantic`  
+3. 保证相对布局或设置 `PYTHONPATH` / 改 `_lib/bootstrap.py`  
+4. 需要读文档时设置 `FASTJSON_DOCS_DIR`，或保留 `web/content/docs`  
+5. 运行 `python tools/fjtool.py -h` 校验  
+
 ## 用法
 
 ```bash
@@ -32,12 +80,6 @@ python tools/fjtool.py waf_apply '{"@type":"..."}' -t unicode
 - DNS / CEYE：读环境变量或项目根 `.env`（`CEYE_TOKEN` / `CEYE_DOMAIN`），CLI **不**提供 token 参数。
 
 `fjtool.sh` 为薄封装：`exec python3 "$(dirname)/fjtool.py" "$@"`。
-
-## 依赖
-
-本仓库内：已 `pip install -e ".[dev]"`（或至少 `httpx` + `pydantic`），在仓库根执行即可。
-
-脚本会把 `<repo>/src` 与仓库根加入 `sys.path`（见 `_lib/bootstrap.py`）。
 
 ## 迁到其他项目
 
