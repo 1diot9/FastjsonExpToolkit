@@ -6,12 +6,28 @@ Fastjson 探测 / PoC / WAF 绕过工具箱，提供 **Web UI**、**MCP（Agent�
 
 ## 快速开始
 
+需要 **Python >= 3.10**。建议先创建并激活虚拟环境，再安装依赖：
+
 ```bash
-# Python >= 3.10
+# 1. 创建虚拟环境（仓库根目录）
+python3 -m venv .venv
+
+# 2. 激活
+# Linux / macOS:
+source .venv/bin/activate
+# Windows (PowerShell):
+# .\.venv\Scripts\Activate.ps1
+# Windows (cmd):
+# .venv\Scripts\activate.bat
+
+# 3. 安装本包（含开发依赖）
 pip install -e ".[dev]"
 
+# 4. 前端依赖
 cd web && npm install && cd ..
 ```
+
+退出虚拟环境：`deactivate`。`.venv/` 已在 `.gitignore` 中，勿提交。
 
 一键启停 Web（不含 Docker 靶场；默认后端热更新）：
 
@@ -46,7 +62,39 @@ CEYE_DOMAIN=hpdth2.ceye.io
 
 ## tools/ CLI（可迁移，对齐 MCP）
 
-与 MCP **同名同语义** 的轻量入口，便于拷到其他项目作基础工具。不代发 exploit。单一入口 + 子命令：
+与 MCP **同名同语义** 的轻量入口，便于拷到其他项目作基础工具。不代发 exploit。单一入口 + 子命令。
+
+### 初始化（必做）
+
+CLI **不依赖** `mcp` / FastAPI；最少只需 `httpx` + `pydantic`。本仓库内建议与「快速开始」共用同一 venv：
+
+```bash
+# 仓库根目录；已激活 .venv（见上文「快速开始」）
+pip install -e .
+# 或仅最小依赖（不装本包时）：
+# pip install "httpx>=0.27" "pydantic>=2.7"
+```
+
+校验（须与运行 `fjtool` 的是**同一个** Python）：
+
+```bash
+python tools/fjtool.py -h
+python tools/fjtool.py docs_list
+# 或：./tools/fjtool.sh docs_list
+```
+
+若 `ModuleNotFoundError: No module named 'fastjson_toolkit'` / `httpx` / `pydantic`：未激活 venv、未 `pip install`，或用了系统 `python3` 而依赖装在 `.venv`。处理：激活 `.venv` 后重装，或显式：
+
+```bash
+.venv/bin/python tools/fjtool.py -h          # Linux / macOS
+# .venv\Scripts\python.exe tools\fjtool.py -h  # Windows
+```
+
+可选：复制 `.env.example` 为 `.env` 并填写 `CEYE_TOKEN` / `CEYE_DOMAIN`（探测 DNS 时自动读；**不要**在 CLI 参数里传 token）。
+
+迁到其他项目、目录布局与精简依赖见 [`tools/README.md`](tools/README.md)。
+
+### 用法示例
 
 ```bash
 python tools/fjtool.py -h
@@ -55,11 +103,105 @@ python tools/fjtool.py docs_list
 python tools/fjtool.py poc_get 1.2.68 mysql_jdbc --options '{"ldap_url":"ldap://..."}'
 ```
 
-实现与迁移说明见 [`tools/README.md`](tools/README.md)。Handler 在 `tools/_lib/`，MCP 传输层复用同一套。
+Handler 在 `tools/_lib/`，MCP 传输层复用同一套。
 
 ---
 
 ## MCP（Agent 工具）
+
+### 初始化（必做）
+
+MCP 依赖官方 Python SDK **1.x**（`mcp>=1.9.0,<2`，含 `FastMCP`），随本包装入。`pip install mcp` 默认会装到 **2.x**（`FastMCP` 已改名为 `MCPServer`），本仓库尚未迁移，故 `pyproject.toml` 上限钉在 `<2`。请先按「快速开始」创建并**激活**虚拟环境，再安装：
+
+```bash
+# 仓库根目录；已激活 .venv
+pip install -e .
+# 或含开发依赖：pip install -e ".[dev]"
+```
+
+校验当前解释器能导入 FastMCP（与即将运行 `fjtoolkit` 的是**同一个** Python）：
+
+```bash
+python -c "from mcp.server.fastmcp import FastMCP; print('ok')"
+# Windows 也可用: py -c "from mcp.server.fastmcp import FastMCP; print('ok')"
+which fjtoolkit   # Linux / macOS：应指向 .venv
+where fjtoolkit   # Windows：应指向 .venv\Scripts
+pip show mcp      # Version 应为 1.x（例如 1.29.x），不要是 2.x
+```
+
+若出现 `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`：通常是未 `pip install -e .`、跑在系统 Python / 错误 venv，或装到了 **mcp 2.x**。处理：
+
+```bash
+pip uninstall mcp -y
+pip install "mcp>=1.9.0,<2"
+# 确认: pip show mcp → Version 1.x，Summary 含 Model Context Protocol
+python -c "from mcp.server.fastmcp import FastMCP; print('ok')"
+```
+
+stdio 接入 Cursor 时，`mcp.json` 的 `command` 建议写 **venv 内 `fjtoolkit` 的绝对路径**（或同样带 `"env"` / 先激活再启动），避免 IDE 用到未装依赖的系统 Python。
+
+### 方式一：stdio
+
+```bash
+fjtoolkit mcp
+```
+
+Cursor `mcp.json`（把 `command` 换成本机 venv 路径）：
+
+```json
+{
+  "mcpServers": {
+    "fastjson-toolkit": {
+      "command": "/absolute/path/to/.venv/bin/fjtoolkit",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Windows 示例：`"command": "C:\\Users\\Admin\\Desktop\\FastjsonExpToolkit-main\\.venv\\Scripts\\fjtoolkit.exe"`。
+
+### 方式二：HTTP（推荐在设置页启停）
+
+1. 先完成上文「初始化」，再启动 Web（见「快速开始」）
+2. 打开 `/settings` →「MCP HTTP」
+3. 填写 Host / 端口 / 鉴权 Token，点「启动服务」
+4. 「复制 Cursor 配置」粘贴到 `mcp.json`
+
+默认地址：`http://127.0.0.1:8100/mcp`。
+
+也可命令行（同一已安装依赖的 venv）：
+
+```bash
+fjtoolkit mcp --http --host 127.0.0.1 --port 8100 --token your-secret
+```
+
+配置写入 `.env`：
+
+```env
+MCP_HTTP_HOST=127.0.0.1
+MCP_HTTP_PORT=8100
+MCP_HTTP_TOKEN=your-secret
+```
+
+客户端鉴权：`Authorization: Bearer <token>` 或 `X-MCP-Token`。
+
+Cursor `mcp.json`（HTTP）示例：
+
+```json
+{
+  "mcpServers": {
+    "fastjson-toolkit-http": {
+      "url": "http://127.0.0.1:8100/mcp",
+      "headers": {
+        "Authorization": "Bearer your-secret"
+      }
+    }
+  }
+}
+```
+
+文档目录默认 `web/content/docs/`，可用环境变量 `FASTJSON_DOCS_DIR` 覆盖。
 
 与 REST 同源，供 Cursor 等 MCP 客户端调用。
 
@@ -302,68 +444,6 @@ MCP 返回刻意精简：去掉 `evidence` / `notes` / `raw` / 长描述；目�
 ```
 
 → `{ "ok": true, "slug": "…", "title": "13.1 出网", "content": "…" }`（**仅该段**）。
-
-### 方式一：stdio
-
-```bash
-pip install -e .
-fjtoolkit mcp
-```
-
-Cursor `mcp.json`：
-
-```json
-{
-  "mcpServers": {
-    "fastjson-toolkit": {
-      "command": "fjtoolkit",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-### 方式二：HTTP（推荐在设置页启停）
-
-1. 先启动 Web（见上）
-2. 打开 `/settings` →「MCP HTTP」
-3. 填写 Host / 端口 / 鉴权 Token，点「启动服务」
-4. 「复制 Cursor 配置」粘贴到 `mcp.json`
-
-默认地址：`http://127.0.0.1:8100/mcp`。
-
-也可命令行：
-
-```bash
-fjtoolkit mcp --http --host 127.0.0.1 --port 8100 --token your-secret
-```
-
-配置写入 `.env`：
-
-```env
-MCP_HTTP_HOST=127.0.0.1
-MCP_HTTP_PORT=8100
-MCP_HTTP_TOKEN=your-secret
-```
-
-客户端鉴权：`Authorization: Bearer <token>` 或 `X-MCP-Token`。
-
-Cursor `mcp.json`（HTTP）示例：
-
-```json
-{
-  "mcpServers": {
-    "fastjson-toolkit-http": {
-      "url": "http://127.0.0.1:8100/mcp",
-      "headers": {
-        "Authorization": "Bearer your-secret"
-      }
-    }
-  }
-}
-```
-
-文档目录默认 `web/content/docs/`，可用环境变量 `FASTJSON_DOCS_DIR` 覆盖。
 
 ---
 
